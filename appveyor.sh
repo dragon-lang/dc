@@ -65,21 +65,21 @@ for proj in druntime phobos; do
 done
 
 # build via makefile
-cd /c/projects/dmd/src
+cd /c/projects/dc/src
 make -f win64.mak reldmd DMD=../src/dmd
 
 cd /c/projects/druntime
-make -f win64.mak DMD=../dmd/src/dmd
+make -f win64.mak DMD=../dc/src/dmd DMD_DIR=..\dc
 
 cd /c/projects/phobos
-make -f win64.mak DMD=../dmd/src/dmd
+make -f win64.mak DMD=../dc/src/dmd DMD_DIR=..\dc
 
-cp /c/projects/phobos/phobos64.lib /c/projects/dmd/
+cp /c/projects/phobos/phobos64.lib /c/projects/dc/
 
 export OS="Win_64"
 export CC='c:/"Program Files (x86)"/"Microsoft Visual Studio 14.0"/VC/bin/amd64/cl.exe'
 export MODEL="64"
 export MODEL_FLAG="-m64"
 
-cd /c/projects/dmd/test
+cd /c/projects/dc/test
 ../../gnumake/make -j3 all MODEL=$MODEL ARGS="-O -inline -g" MODEL_FLAG=$MODEL_FLAG LIB="../../phobos;$LIB"
