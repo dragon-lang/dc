@@ -67,6 +67,7 @@ enum CPU
 // Put command line switches in here
 struct Param
 {
+    bool doneParsingCommandLine; // true when command line is fully parsed
     bool obj;           // write object file
     bool link;          // perform link
     bool dll;           // generate shared dynamic library

@@ -92,6 +92,7 @@ enum JsonFieldFlags : uint
 // Put command line switches in here
 struct Param
 {
+    bool doneParsingCommandLine; // true when command line is fully parsed
     bool obj = true;        // write object file
     bool link = true;       // perform link
     bool dll;               // generate shared dynamic library
@@ -386,7 +387,7 @@ struct Global
     /**
     Returns: the version as the number that would be returned for __VERSION__
     */
-    extern(C++) uint versionNumber()
+    extern (C++) uint versionNumber()
     {
         import core.stdc.ctype;
         __gshared uint cached = 0;
