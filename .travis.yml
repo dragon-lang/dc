@@ -1,0 +1,21 @@
+language: d
+git:
+  depth: false
+  submodules: false
+before_script:
+# gdb is used by some dmd tests
+- sudo apt-get install gdb
+script:
+# build dmd
+- make -j2 -f posix.mak
+# build druntime and phobos.
+- git clone --depth=1 --branch=master https://github.com/dlang/druntime.git ../druntime
+- git clone --depth=1 --branch=master https://github.com/dlang/phobos.git ../phobos
+- make -j2 -C ../druntime -f posix.mak DMD=../dc/generated/linux/release/64/dmd DMD_DIR=../dc
+- make -j2 -C ../phobos -f posix.mak DMD=../dc/generated/linux/release/64/dmd DMD_DIR=../dc
+# run unittest and testsuite.
+#make -j$N -C ../druntime -f posix.mak DMD=../dc/generated/linux/release/64/dmd unittest
+#make -j$N -C ../phobos -f posix.mak DMD=../dc/generated/linux/release/64/dmd unittest
+#make -j$N -C test DMD=../dc/generated/linux/release/64/dmd MODEL=64
+# run the dmd test suite
+- dmd -run test/run.d
