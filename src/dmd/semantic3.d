@@ -370,7 +370,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
             //if (vthis) printf("\tvthis.type = %s\n", vthis.type.toChars());
 
             // Declare hidden variable _arguments[] and _argptr
-            if (f.varargs == 1)
+            if (f.parameterList.varargs == VarArg.variadic)
             {
                 if (f.linkage == LINK.d)
                 {
@@ -430,7 +430,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                     auto v = new VarDeclaration(funcdecl.loc, vtype, id, null);
                     //printf("declaring parameter %s of type %s\n", v.toChars(), v.type.toChars());
                     stc |= STC.parameter;
-                    if (f.varargs == 2 && i + 1 == nparams)
+                    if (f.parameterList.varargs == VarArg.typesafe && i + 1 == nparams)
                     {
                         stc |= STC.variadic;
                         auto vtypeb = vtype.toBasetype();
@@ -463,11 +463,11 @@ private extern(C++) final class Semantic3Visitor : Visitor
 
             // Declare the tuple symbols and put them in the symbol table,
             // but not in parameters[].
-            if (f.parameters)
+            if (f.parameterList.parameters)
             {
-                for (size_t i = 0; i < f.parameters.dim; i++)
+                for (size_t i = 0; i < f.parameterList.parameters.dim; i++)
                 {
-                    Parameter fparam = (*f.parameters)[i];
+                    Parameter fparam = (*f.parameterList.parameters)[i];
                     if (!fparam.ident)
                         continue; // never used, so ignore
                     if (fparam.type.ty == Ttuple)

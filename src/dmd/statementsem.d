@@ -1111,8 +1111,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             {
                 if (FuncDeclaration fd = sapplyOld.isFuncDeclaration())
                 {
-                    VarArg fvarargs; // ignored (opApply shouldn't take variadics)
-                    auto fparameters = fd.getParameterList(&fvarargs);
+                    auto fparameters = fd.getParameterList();
 
                     if (fparameters.length == 1)
                     {
@@ -1618,7 +1617,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                         tfld = cast(TypeFunction)tab.nextOf();
                     Lget:
                         //printf("tfld = %s\n", tfld.toChars());
-                        if (tfld.parameters.dim == 1)
+                        if (tfld.parameterList.parameters.dim == 1)
                         {
                             Parameter p = tfld.parameterList[0];
                             if (p.type && p.type.ty == Tdelegate)
