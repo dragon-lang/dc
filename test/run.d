@@ -16,7 +16,8 @@ import std.algorithm, std.conv, std.datetime, std.exception, std.file, std.forma
 import core.stdc.stdlib : exit;
 
 const scriptDir = __FILE_FULL_PATH__.dirName.buildNormalizedPath;
-string resultsDir = scriptDir.buildPath("test_results");
+auto testPath(R)(R path) { return buildNormalizedPath(scriptDir, path); }
+string resultsDir = testPath("test_results");
 immutable testDirs = ["runnable", "compilable", "fail_compilation"];
 shared bool verbose; // output verbose logging
 shared bool force; // always run all tests (ignores timestamp checking)
@@ -107,7 +108,7 @@ Does nothing if the tools already exist and are newer than their source.
 */
 void ensureToolsExists()
 {
-    static toolsDir = scriptDir.buildPath("tools");
+    static toolsDir = testPath("tools");
     resultsDir.mkdirRecurse;
     auto tools = [
         "d_do_test",
@@ -141,7 +142,7 @@ auto predefinedTargets(string[] targets)
 {
     static findFiles(string dir)
     {
-        return scriptDir.buildPath(dir).dirEntries("*{.d,.sh}", SpanMode.shallow).map!(e => e.name);
+        return dirEntries(testPath(dir), "*{.d,.sh}", SpanMode.shallow).map!(e => e.name);
     }
 
     Appender!(string[]) newTargets;
@@ -185,7 +186,7 @@ auto filterTargets(string[] targets, string[string] env)
     bool error;
     foreach (target; targets)
     {
-        if (!scriptDir.buildPath(target).exists)
+        if (!exists(testPath(target)))
         {
             writefln("Warning: %s can't be found", target);
             error = true;
@@ -198,7 +199,7 @@ auto filterTargets(string[] targets, string[string] env)
     foreach (t; targets)
     {
         auto resultRunTime = resultsDir.buildPath(t ~ ".out").timeLastModified.ifThrown(SysTime.init);
-        if (!force && resultRunTime > scriptDir.buildPath(t).timeLastModified &&
+        if (!force && resultRunTime > testPath(t).timeLastModified &&
                 resultRunTime > env["DMD"].timeLastModified.ifThrown(SysTime.init))
             writefln("%s is already up-to-date", t);
         else
@@ -260,17 +261,17 @@ string[string] getEnvironment()
         env["OBJ"] = ".obj";
         env["DSEP"] = `\\`;
         env["SEP"] = `\`;
-        auto druntimePath = environment.get("DRUNTIME_PATH", `..\..\druntime`);
-        auto phobosPath = environment.get("PHOBOS_PATH", `..\..\phobos`);
+        auto druntimePath = environment.get("DRUNTIME_PATH", testPath(`..\..\druntime`));
+        auto phobosPath = environment.get("PHOBOS_PATH", testPath(`..\..\phobos`));
         env["DFLAGS"] = `-I%s\import -I%s`.format(druntimePath, phobosPath);
         env["LIB"] = phobosPath;
 
         // auto-tester might run the testsuite with a different $(MODEL) than DMD
         // has been compiled with. Hence we manually check which binary exists.
         // For windows the $(OS) during build is: `windows`
-        int dmdModel = "../generated/windows/%s/64/dmd%s".format(build, exe).exists ? 64 : 32;
+        int dmdModel = testPath(format(`..\generated\windows\%s\64\dmd%s`, build, exe)).exists ? 64 : 32;
         env.getDefault("MODEL", dmdModel.text);
-        env["DMD"] = "../generated/windows/%s/%d/dmd%s".format(build, dmdModel, exe);
+        env["DMD"] = testPath(format(`..\generated\windows\%s\%d\dmd%s`, build, dmdModel, exe));
     }
     else
     {
@@ -279,16 +280,16 @@ string[string] getEnvironment()
         env["OBJ"] = ".o";
         env["DSEP"] = "/";
         env["SEP"] = "/";
-        auto druntimePath = environment.get("DRUNTIME_PATH", scriptDir ~ `/../../druntime`);
-        auto phobosPath = environment.get("PHOBOS_PATH", scriptDir ~ `/../../phobos`);
+        auto druntimePath = environment.get("DRUNTIME_PATH", testPath(`../../druntime`));
+        auto phobosPath = environment.get("PHOBOS_PATH", testPath(`../../phobos`));
 
         // auto-tester might run the testsuite with a different $(MODEL) than DMD
         // has been compiled with. Hence we manually check which binary exists.
-        int dmdModel = scriptDir ~ "../generated/%s/%s/64/dmd".format(os, build).exists ? 64 : 32;
+        int dmdModel = testPath(format("../generated/%s/%s/64/dmd", os, build)).exists ? 64 : 32;
         env.getDefault("MODEL", dmdModel.text);
 
-        auto generatedSuffix = "generated/%s/%s/%s".format(os, build, dmdModel);
-        env["DMD"] = scriptDir ~ "/../" ~ generatedSuffix ~ "/dmd";
+        auto generatedSuffix = format("generated/%s/%s/%s", os, build, dmdModel);
+        env["DMD"] = testPath("../" ~ generatedSuffix ~ "/dmd");
 
         // default to PIC on x86_64, use PIC=1/0 to en-/disable PIC.
         // Note that shared libraries and C files are always compiled with PIC.
