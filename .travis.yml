@@ -6,8 +6,12 @@ before_script:
 # gdb is used by some dmd tests
 - sudo apt-get install gdb
 script:
+# install rund
+- git clone --depth=1 --branch=master https://github.com/marler8997/rund.git ../rund
+- dmd -I../rund/src -run ../rund/make.d build
+- sudo cp ../rund/bin/rund /bin/rund
 # build dmd
-- make -j$(nproc) -f posix.mak
+- ./src/build.d
 # build druntime and phobos.
 - git clone --depth=1 --branch=master https://github.com/dlang/druntime.git ../druntime
 - git clone --depth=1 --branch=master https://github.com/dlang/phobos.git ../phobos
