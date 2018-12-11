@@ -1,4 +1,6 @@
-#!/usr/bin/env rdmd
+#!/usr/bin/env rund
+//!debug
+//!debugSymbols
 /**
 DMD builder
 
