@@ -294,7 +294,8 @@ private final class ParamSection : Section
         TypeFunction tf = a.dim == 1 ? isTypeFunction(s) : null;
         if (tf)
         {
-            size_t pcount = (tf.parameters ? tf.parameters.dim : 0) + cast(int)(tf.varargs == 1);
+            size_t pcount = (tf.parameterList.parameters ? tf.parameterList.parameters.dim : 0) +
+                            cast(int)(tf.parameterList.varargs == VarArg.variadic);
             if (pcount != paramcount)
             {
                 warning(s.loc, "Ddoc: parameter count mismatch, expected %d, got %d", pcount, paramcount);
@@ -327,7 +328,7 @@ private bool isCVariadicParameter(Dsymbols* a, const(char)[] p)
     foreach (member; *a)
     {
         TypeFunction tf = isTypeFunction(member);
-        if (tf && tf.varargs == 1 && p == "...")
+        if (tf && tf.parameterList.varargs == VarArg.variadic && p == "...")
             return true;
     }
     return false;
@@ -2309,9 +2310,9 @@ private TypeFunction isTypeFunction(Dsymbol s)
 private Parameter isFunctionParameter(Dsymbol s, const(char)* p, size_t len)
 {
     TypeFunction tf = isTypeFunction(s);
-    if (tf && tf.parameters)
+    if (tf && tf.parameterList.parameters)
     {
-        foreach (fparam; *tf.parameters)
+        foreach (fparam; *tf.parameterList.parameters)
         {
             if (fparam.ident && p[0 .. len] == fparam.ident.toString())
             {

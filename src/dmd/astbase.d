@@ -1748,6 +1748,12 @@ struct ASTBase
         }
     }
 
+    extern (C++) struct ParameterList
+    {
+        Parameters* parameters;
+        VarArg varargs;
+    }
+
     extern (C++) final class Parameter : RootObject
     {
         StorageClass storageClass;
@@ -3864,8 +3870,7 @@ struct ASTBase
 
     extern (C++) class TypeFunction : TypeNext
     {
-        Parameters* parameters;     // function parameters
-        VarArg varargs;
+        ParameterList parameterList;  // function parameters
 
         bool isnothrow;             // true: nothrow
         bool isnogc;                // true: is @nogc
@@ -3884,8 +3889,8 @@ struct ASTBase
         {
             super(Tfunction, treturn);
             assert(VarArg.none <= varargs && varargs <= VarArg.typesafe);
-            this.parameters = parameters;
-            this.varargs = varargs;
+            this.parameterList.parameters = parameters;
+            this.parameterList.varargs = varargs;
             this.linkage = linkage;
 
             if (stc & STC.pure_)
@@ -3916,8 +3921,8 @@ struct ASTBase
         override Type syntaxCopy()
         {
             Type treturn = next ? next.syntaxCopy() : null;
-            Parameters* params = Parameter.arraySyntaxCopy(parameters);
-            auto t = new TypeFunction(params, treturn, varargs, linkage);
+            Parameters* params = Parameter.arraySyntaxCopy(parameterList.parameters);
+            auto t = new TypeFunction(params, treturn, parameterList.varargs, linkage);
             t.mod = mod;
             t.isnothrow = isnothrow;
             t.isnogc = isnogc;

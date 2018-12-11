@@ -1199,7 +1199,7 @@ private:
                 tmp.buf.writeByte('A');
                 break;
             case LINK.cpp:
-                if (needthis && type.varargs != VarArg.variadic)
+                if (needthis && type.parameterList.varargs != VarArg.variadic)
                     tmp.buf.writeByte('E'); // thiscall
                 else
                     tmp.buf.writeByte('A'); // cdecl
@@ -1247,9 +1247,9 @@ private:
             rettype.accept(tmp);
             tmp.flags &= ~MANGLE_RETURN_TYPE;
         }
-        if (!type.parameters || !type.parameters.dim)
+        if (!type.parameterList.parameters || !type.parameterList.parameters.dim)
         {
-            if (type.varargs == VarArg.variadic)
+            if (type.parameterList.varargs == VarArg.variadic)
                 tmp.buf.writeByte('Z');
             else
                 tmp.buf.writeByte('X');
@@ -1282,8 +1282,8 @@ private:
                 return 0;
             }
 
-            Parameter._foreach(type.parameters, &mangleParameterDg);
-            if (type.varargs == VarArg.variadic)
+            Parameter._foreach(type.parameterList.parameters, &mangleParameterDg);
+            if (type.parameterList.varargs == VarArg.variadic)
             {
                 tmp.buf.writeByte('Z');
             }
