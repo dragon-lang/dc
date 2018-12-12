@@ -42,3 +42,6 @@ src/optabgen.dSYM/
 # GCov
 *.gcno
 *.gcda
+
+# Backup Files
+*~
