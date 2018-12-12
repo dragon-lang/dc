@@ -868,6 +868,8 @@ Lagain:
     if (auto v = s.isVarDeclaration())
     {
         //printf("Identifier '%s' is a variable, type '%s'\n", s.toChars(), v.type.toChars());
+        if (sc.intypeof == 1)
+            v.dsymbolSemantic(sc);
         if (!v.type ||                  // during variable type inference
             !v.type.deco && v.inuse)    // during variable type semantic
         {
@@ -7841,6 +7843,8 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     DotVarExp dve = (ce && ce.e1.op == TOK.dotVariable)
                         ? cast(DotVarExp)ce.e1 : null;
                     if (sd.ctor && ce && dve && dve.var.isCtorDeclaration() &&
+                        // https://issues.dlang.org/show_bug.cgi?id=19389
+                        dve.e1.op != TOK.dotVariable &&
                         e2y.type.implicitConvTo(t1))
                     {
                         /* Look for form of constructor call which is:
