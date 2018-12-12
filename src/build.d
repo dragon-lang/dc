@@ -27,11 +27,24 @@ const srcDir = thisBuildScript.dirName.buildNormalizedPath;
 shared bool verbose; // output verbose logging
 shared bool force; // always build everything (ignores timestamp checking)
 
+auto execute(T...)(scope const(char[])[] args, T extra)
+{
+    log("[EXECUTE] %s", escapeShellCommand(args));
+    return std.process.execute(args, extra);
+}
+
 __gshared string[string] env;
 __gshared string[][string] flags;
 __gshared typeof(sourceFiles()) sources;
 
-void main(string[] args)
+class SilentException : Exception { this() { super(null); } }
+
+int main(string[] args)
+{
+    try { return main2(args); }
+    catch (SilentException) { return 1; }
+}
+int main2(string[] args)
 {
     int jobs = totalCPUs;
     auto res = getopt(args,
@@ -39,7 +52,7 @@ void main(string[] args)
         "v", "Verbose command output", (cast(bool*) &verbose),
         "f", "Force run (ignore timestamps and always run all tests)", (cast(bool*) &force),
     );
-    void showHelp()
+    int showHelp()
     {
         defaultGetoptPrinter(`./build.d <targets>...
 
@@ -88,7 +101,7 @@ The generated files will be in generated/$(OS)/$(BUILD)/$(MODEL)
 Command-line parameters
 -----------------------
 `, res.options);
-        return;
+        return 1;
     }
 
     if (res.helpWanted)
@@ -126,6 +139,7 @@ Command-line parameters
     }
     foreach (target; targets)
         target();
+    return 0;
 }
 
 /**
@@ -640,27 +654,36 @@ void processEnvironment()
     else
     {
         // default warnings
-        warnings = ["-Wno-deprecated", "-Wstrict-aliasing", "-Werror"];
+        version (Windows)
+            warnings = [];
+        else
+            warnings = ["-Wno-deprecated", "-Wstrict-aliasing","-Werror"];
         if (env["CXX_KIND"] == "clang++")
             warnings ~= "-Wno-logical-op-parentheses";
     }
 
     auto targetCPU = "X86";
     auto cxxFlags = warnings;
-    cxxFlags ~= [
-        "-fno-exceptions", "-fno-rtti",
-        "-D__pascal=", "-DMARS=1", "-DTARGET_"~os.toUpper~"=1",
-        "-DDM_TARGET_CPU_"~targetCPU~"=1",
-        env["MODEL_FLAG"],
-        env["PIC_FLAG"],
-    ];
+    version (Windows) { } else
+    {
+        cxxFlags ~= [
+            "-fno-exceptions", "-fno-rtti",
+            "-D__pascal=", "-DMARS=1", "-DTARGET_"~os.toUpper~"=1",
+            "-DDM_TARGET_CPU_"~targetCPU~"=1",
+            env["MODEL_FLAG"],
+        ];
+    }
+    if (!env["PIC_FLAG"].empty)
+        cxxFlags ~= env["PIC_FLAG"];
     if (env["CXX_KIND"] == "g++")
         cxxFlags ~= ["-std=gnu++98"];
     if (env["CXX_KIND"] == "clang++")
         cxxFlags ~= ["-xc++"];
 
     // TODO: allow adding new flags from the environment
-    string[] dflags = ["-version=MARS", "-w", "-de", env["PIC_FLAG"], env["MODEL_FLAG"], "-J"~env["G"]];
+    string[] dflags = ["-version=MARS", "-w", "-de", env["MODEL_FLAG"], "-J"~env["G"]];
+    if (!env["PIC_FLAG"].empty)
+        dflags ~= env["PIC_FLAG"];
 
     flags["BACK_FLAGS"] = ["-I"~env["ROOT"], "-I"~env["TK"], "-I"~env["C"], "-I"~env["G"], "-I"~env["D"], "-DDMDV2=1"];
 
@@ -938,9 +961,17 @@ auto getHostDMDPath(string hostDmd)
     version(Posix)
         return ["which", hostDmd].execute.output;
     else version(Windows)
-        return ["where", hostDmd].execute.output;
+        return ["where", hostDmd].execute.output.firstLine;
     else
         static assert(false, "Unrecognized or unsupported OS.");
+}
+
+auto firstLine(T)(T str)
+{
+    auto newlineIndex = str.indexOf("\n");
+    if (newlineIndex < 0)
+        return str;
+    return str[0 .. newlineIndex].stripRight("\r");
 }
 
 version(Windows)
@@ -995,20 +1026,22 @@ version(Windows)
         const vsInstallPath = [vswhere, "-latest", "-products", "*", "-requires",
             "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"].execute.output
             .replace("\r\n", "");
-
+        log("Visual Studio Installation '%s'", vsInstallPath);
         if (!vsInstallPath.exists)
-            throw new Exception("Could not locate the Visual Studio installation directory");
+            throw fatal("vswhere.exe returned an installation path that did not exist '%s'", vsInstallPath);
 
-        const vcVersionFile = vsInstallPath.buildPath("VC", "Auxiliary", "Build", "Microsoft.VCToolsVersion.default.txt");
+        const vcVersionFile = buildPath(vsInstallPath, "VC", "Auxiliary", "Build", "Microsoft.VCToolsVersion.default.txt");
         if (!vcVersionFile.exists)
-            throw new Exception(`Could not locate the Visual C++ version file "%s"`.format(vcVersionFile));
+            throw fatal(`Visual Studio Installation is missing version file '%s'`, vcVersionFile);
 
-        const vcVersion = vcVersionFile.readText().replace("\r\n", "");
+        const vcVersion = vcVersionFile.readText().strip();
         const vcArch = model == "64" ? "x64" : "x86";
-        const vcPath = vsInstallPath.buildPath("VC", "Tools", "MSVC", vcVersion, "bin", "Host" ~ vcArch, vcArch);
+        const vcPath = buildPath(vsInstallPath, "VC", "Tools", "MSVC", vcVersion, "bin", "Host" ~ vcArch, vcArch);
+        log("MSVC '%s'", vcPath);
         if (!vcPath.exists)
-            throw new Exception("Could not locate the Visual C++ installation directory");
-
+            throw fatal("Visual Studio installation is missing MSVC '%s'", vcPath);
+        // set to environment variable so that child programs will use the same version of MSVC (i.e. msvc-dmc)
+        environment["MSVC_CC"] = buildPath(vcPath, "cl.exe");
         return vcPath;
     }
 }
@@ -1228,6 +1261,15 @@ auto log(T...)(T args)
         writefln(args);
 }
 
+SilentException fatal(T...)(T args)
+{
+    static if (T.length == 1)
+        writeln("Error: " ~ args[0]);
+    else
+        writefln("Error: " ~ args[0], args[1 .. $]);
+    return new SilentException();
+}
+
 /**
 Run a command and optionally log the invocation
 
@@ -1250,6 +1292,7 @@ Params:
 auto runCanThrow(T)(T args)
 {
     auto res = run(args);
-    enforce(!res.status, res.output);
+    if (res.status)
+        fatal("last command failed (exit code %s) with output: \n%s", res.status, res.output);
     return res.output;
 }

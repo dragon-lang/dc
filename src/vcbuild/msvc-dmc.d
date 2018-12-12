@@ -9,16 +9,39 @@ import std.path;
 import std.process;
 import std.stdio;
 
+enum defaultVSVersion = "10.0";
+
+string findMsvc()
+{
+    import std.format: format;
+    {
+        auto cl = environment.get("MSVC_CC", null);
+        if (cl)
+            return cl;
+    }
+    auto vcInstallDir = environment.get("VCINSTALLDIR",
+                        format(`C:\Program Files (x86)\Microsoft Visual Studio %s\VC\`, defaultVSVersion));
+    foreach (candidate; [
+        buildPath("bin", "amd64", "cl.exe"),
+        buildPath("bin", "hostx64", "x64", "cl.exe"),
+    ])
+    {
+        auto cl = buildPath(vcInstallDir, candidate);
+        if (exists(cl))
+            return cl;
+    }
+    writefln("Error: cannot find MSVC");
+    import core.stdc.stdlib : exit;
+    exit(1);
+    assert(0);
+}
+
 int main(string[] args)
 {
     import std.conv: to;
-    import std.format: format;
 
-    enum defaultVSVersion = "10.0";
-    auto cl = environment.get("MSVC_CC",
-        environment.get("VCINSTALLDIR",
-                        `\Program Files (x86)\Microsoft Visual Studio %s\VC\`.format(defaultVSVersion))
-            .buildPath("bin", "amd64", "cl.exe"));
+    const cl = findMsvc();
+
     string[] newArgs = [cl];
     newArgs ~= "/nologo";
     newArgs ~= `/Ivcbuild`;
@@ -74,7 +97,7 @@ int main(string[] args)
                 if (arg.startsWith("-o")) // "output filename"
                     newArgs ~= "/F" ~ (compilingOnly ? "o" : "e") ~ arg[2..$];
                 else
-                if (arg[0] != '/' && arg[0] != '-' && !exists(arg) && exists(arg ~ ".c"))
+                if (!args.startsWith("/") && !arg.startsWith("-") && !exists(arg) && exists(arg ~ ".c"))
                     newArgs ~= arg ~ ".c";
                 else
                     newArgs ~= arg;
