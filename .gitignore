@@ -45,3 +45,5 @@ src/optabgen.dSYM/
 
 # Backup Files
 *~
+
+/.redo
