@@ -179,7 +179,10 @@ auto dmdConf()
 DFLAGS=-I%@P%/../../../../../druntime/import -I%@P%/../../../../../phobos -L-L%@P%/../../../../../phobos/generated/{OS}/{BUILD}/32{exportDynamic}
 
 [Environment64]
-DFLAGS=-I%@P%/../../../../../druntime/import -I%@P%/../../../../../phobos -L-L%@P%/../../../../../phobos/generated/{OS}/{BUILD}/64{exportDynamic} -fPIC`.replace("{exportDynamic}", exportDynamic).replace("{OS}", env["OS"]).replace("{BUILD}", env["BUILD"]);
+DFLAGS=-I%@P%/../../../../../druntime/import -I%@P%/../../../../../phobos -L-L%@P%/../../../../../phobos/generated/{OS}/{BUILD}/64{exportDynamic} -fPIC`
+        .replace("{exportDynamic}", exportDynamic)
+        .replace("{BUILD}", env["BUILD"])
+        .replace("{OS}", env["OS"]);
 
     auto target = env["G"].buildPath("dmd.conf");
     auto commandFunction = (){
