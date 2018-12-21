@@ -15,7 +15,7 @@ auto scriptRelativePath(string path)
 
 int main(string[] args)
 {
-    run(["git", "fetch", "https://github.com/marler8997/dc", "master:merge_from_dmd"]);
+    run(["git", "fetch", "https://github.com/dragon-lang/dc", "master:merge_from_dmd"]);
     run(["git", "checkout", "merge_from_dmd"]);
     run(["git", "fetch", "https://github.com/dlang/dmd"]);
     //auto mergeBase = runGetOutput(["git", "merge-base", "master_dmd", "master_update"], 80).strip();
