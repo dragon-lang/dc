@@ -1699,7 +1699,6 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                      *  extern(C) int _aaApply2(void*, in size_t, int delegate(void*, void*))
                      *      _aaApply2(aggr, keysize, flde)
                      */
-                    __gshared const(char)** name = ["_aaApply", "_aaApply2"];
                     __gshared FuncDeclaration* fdapply = [null, null];
                     __gshared TypeDelegate* fldeTy = [null, null];
 
@@ -1715,7 +1714,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                             dgparams.push(new Parameter(0, Type.tvoidptr, null, null, null));
                         fldeTy[i] = new TypeDelegate(new TypeFunction(ParameterList(dgparams), Type.tint32, LINK.d));
                         params.push(new Parameter(0, fldeTy[i], null, null, null));
-                        fdapply[i] = FuncDeclaration.genCfunc(params, Type.tint32, name[i]);
+                        fdapply[i] = FuncDeclaration.genCfunc(params, Type.tint32, i ? Id._aaApply2 : Id._aaApply);
                     }
 
                     auto exps = new Expressions();
@@ -1723,8 +1722,8 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     auto keysize = taa.index.size();
                     if (keysize == SIZE_INVALID)
                         goto case Terror;
-                    assert(keysize < keysize.max - Target.ptrsize);
-                    keysize = (keysize + (Target.ptrsize - 1)) & ~(Target.ptrsize - 1);
+                    assert(keysize < keysize.max - target.ptrsize);
+                    keysize = (keysize + (target.ptrsize - 1)) & ~(target.ptrsize - 1);
                     // paint delegate argument to the type runtime expects
                     Expression fexp = flde;
                     if (!fldeTy[i].equals(flde.type))
@@ -3610,7 +3609,7 @@ else
              *  try { body } finally { _d_criticalexit(&__critsec[0]); }
              */
             auto id = Identifier.generateId("__critsec");
-            auto t = Type.tint8.sarrayOf(Target.ptrsize + Target.critsecsize());
+            auto t = Type.tint8.sarrayOf(target.ptrsize + target.critsecsize());
             auto tmp = new VarDeclaration(ss.loc, t, id, null);
             tmp.storage_class |= STC.temp | STC.shared_ | STC.static_;
             Expression tmpExp = new VarExp(ss.loc, tmp);
@@ -3649,7 +3648,7 @@ else
             result = s.statementSemantic(sc);
 
             // set the explicit __critsec alignment after semantic()
-            tmp.alignment = Target.ptrsize;
+            tmp.alignment = target.ptrsize;
         }
     }
 
@@ -4193,7 +4192,7 @@ void catchSemantic(Catch c, Scope* sc)
         }
         else if (cd.isCPPclass())
         {
-            if (!Target.cppExceptions)
+            if (!target.cppExceptions)
             {
                 error(c.loc, "catching C++ class objects not supported for this target");
                 c.errors = true;
