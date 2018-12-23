@@ -398,9 +398,8 @@ struct CompiledCtfeFunction
                 {
                     if (!td.objects)
                         return;
-                    for (size_t i = 0; i < td.objects.dim; ++i)
+                    foreach (o; *td.objects)
                     {
-                        RootObject o = td.objects.tdata()[i];
                         Expression ex = isExpression(o);
                         DsymbolExp s = (ex && ex.op == TOK.dSymbol) ? cast(DsymbolExp)ex : null;
                         assert(s);
@@ -1252,15 +1251,12 @@ public:
         return true;
     }
 
-    // Check all members of an array for escaping local variables. Return false if error
+    // Check all elements of an array for escaping local variables. Return false if error
     static bool stopPointersEscapingFromArray(const ref Loc loc, Expressions* elems)
     {
-        for (size_t i = 0; i < elems.dim; i++)
+        foreach (e; *elems)
         {
-            Expression m = (*elems)[i];
-            if (!m)
-                continue;
-            if (!stopPointersEscaping(loc, m))
+            if (e && !stopPointersEscaping(loc, e))
                 return false;
         }
         return true;
@@ -1558,20 +1554,19 @@ public:
             return;
 
         Statement scase = null;
-        size_t dim = s.cases ? s.cases.dim : 0;
-        for (size_t i = 0; i < dim; i++)
-        {
-            CaseStatement cs = (*s.cases)[i];
-            UnionExp uecase = void;
-            Expression ecase = interpret(&uecase, cs.exp, istate);
-            if (exceptionOrCant(ecase))
-                return;
-            if (ctfeEqual(cs.exp.loc, TOK.equal, econdition, ecase))
+        if (s.cases)
+            foreach (cs; *s.cases)
             {
-                scase = cs;
-                break;
+                UnionExp uecase = void;
+                Expression ecase = interpret(&uecase, cs.exp, istate);
+                if (exceptionOrCant(ecase))
+                    return;
+                if (ctfeEqual(cs.exp.loc, TOK.equal, econdition, ecase))
+                {
+                    scase = cs;
+                    break;
+                }
             }
-        }
         if (!scase)
         {
             if (s.hasNoDefault)
@@ -1701,11 +1696,10 @@ public:
         {
             Expression e = null;
             e = interpret(pue, s._body, istate);
-            for (size_t i = 0; i < s.catches.dim; i++)
+            foreach (ca; *s.catches)
             {
                 if (e || !istate.start) // goto target was found
                     break;
-                Catch ca = (*s.catches)[i];
                 e = interpret(pue, ca.handler, istate);
             }
             result = e;
@@ -1721,9 +1715,8 @@ public:
             Type extype = ex.thrown.originalClass().type;
 
             // Search for an appropriate catch clause.
-            for (size_t i = 0; i < s.catches.dim; i++)
+            foreach (ca; *s.catches)
             {
-                Catch ca = (*s.catches)[i];
                 Type catype = ca.type;
                 if (!catype.equals(extype) && !catype.isBaseOf(extype, null))
                     continue;
@@ -2477,9 +2470,8 @@ public:
                 // Reserve stack space for all tuple members
                 if (!td.objects)
                     return;
-                for (size_t i = 0; i < td.objects.dim; ++i)
+                foreach (o; *td.objects)
                 {
-                    RootObject o = (*td.objects)[i];
                     Expression ex = isExpression(o);
                     DsymbolExp ds = (ex && ex.op == TOK.dSymbol) ? cast(DsymbolExp)ex : null;
                     VarDeclaration v2 = ds ? ds.s.isVarDeclaration() : null;
@@ -2630,9 +2622,8 @@ public:
             return;
 
         auto expsx = e.exps;
-        for (size_t i = 0; i < expsx.dim; i++)
+        foreach (i, exp; *expsx)
         {
-            Expression exp = (*expsx)[i];
             Expression ex = interpret(exp, istate);
             if (exceptionOrCant(ex))
                 return;
@@ -2759,9 +2750,8 @@ public:
 
         auto keysx = e.keys;
         auto valuesx = e.values;
-        for (size_t i = 0; i < keysx.dim; i++)
+        foreach (i, ekey; *keysx)
         {
-            auto ekey = (*keysx)[i];
             auto evalue = (*valuesx)[i];
 
             auto ek = interpret(ekey, istate);
@@ -2929,8 +2919,8 @@ public:
                 return elem;
 
             auto elements = new Expressions(len);
-            for (size_t i = 0; i < len; i++)
-                (*elements)[i] = copyLiteral(elem).copy();
+            foreach (ref element; *elements)
+                element = copyLiteral(elem).copy();
             auto ae = new ArrayLiteralExp(loc, newtype, elements);
             ae.ownedByCtfe = OwnedBy.ctfe;
             return ae;
@@ -2992,9 +2982,8 @@ public:
                 if (e.arguments)
                 {
                     exps.setDim(e.arguments.dim);
-                    for (size_t i = 0; i < exps.dim; i++)
+                    foreach (i, ex; *e.arguments)
                     {
-                        Expression ex = (*e.arguments)[i];
                         ex = interpret(ex, istate);
                         if (exceptionOrCant(ex))
                             return;
@@ -3014,9 +3003,9 @@ public:
             result = pue.exp();
             return;
         }
-        if (e.newtype.toBasetype().ty == Tclass)
+        if (auto tc = e.newtype.toBasetype().isTypeClass())
         {
-            ClassDeclaration cd = (cast(TypeClass)e.newtype.toBasetype()).sym;
+            ClassDeclaration cd = tc.sym;
             size_t totalFieldCount = 0;
             for (ClassDeclaration c = cd; c; c = c.baseClass)
                 totalFieldCount += c.fields.dim;
@@ -3025,9 +3014,8 @@ public:
             for (ClassDeclaration c = cd; c; c = c.baseClass)
             {
                 fieldsSoFar -= c.fields.dim;
-                for (size_t i = 0; i < c.fields.dim; i++)
+                foreach (i, v; c.fields)
                 {
-                    VarDeclaration v = c.fields[i];
                     if (v.inuse)
                     {
                         e.error("circular reference to `%s`", v.toPrettyChars());
@@ -3546,7 +3534,7 @@ public:
                 {
                     // Walk the syntax tree to find the indexExp at this depth
                     IndexExp xe = cast(IndexExp)e1;
-                    for (int d = 0; d < depth; ++d)
+                    foreach (d; 0 .. depth)
                         xe = cast(IndexExp)xe.e1;
 
                     Expression ekey = interpret(xe.e2, istate);
@@ -4029,9 +4017,8 @@ public:
             assert(oldelems.dim == newelems.dim);
 
             Type elemtype = oldval.type.nextOf();
-            for (size_t i = 0; i < newelems.dim; i++)
+            foreach (i, ref oldelem; *oldelems)
             {
-                Expression oldelem = (*oldelems)[i];
                 Expression newelem = paintTypeOntoLiteral(elemtype, (*newelems)[i]);
                 // https://issues.dlang.org/show_bug.cgi?id=9245
                 if (e.e2.isLvalue())
@@ -4042,7 +4029,7 @@ public:
                 // https://issues.dlang.org/show_bug.cgi?id=13661
                 if (Expression ex = evaluateDtor(istate, oldelem))
                     return ex;
-                (*oldelems)[i] = newelem;
+                oldelem = newelem;
             }
         }
         else
@@ -4368,9 +4355,8 @@ public:
                 Expressions* newelems = (cast(ArrayLiteralExp)newval).elements;
                 Type elemtype = existingAE.type.nextOf();
                 bool needsPostblit = e.op != TOK.blit && e.e2.isLvalue();
-                for (size_t j = 0; j < newelems.dim; j++)
+                foreach (j, newelem; *newelems)
                 {
-                    Expression newelem = (*newelems)[j];
                     newelem = paintTypeOntoLiteral(elemtype, newelem);
                     if (needsPostblit)
                     {
@@ -5674,9 +5660,9 @@ public:
             ale.ownedByCtfe = OwnedBy.ctfe;
 
             // https://issues.dlang.org/show_bug.cgi?id=14686
-            for (size_t i = 0; i < ale.elements.dim; i++)
+            foreach (elem; *ale.elements)
             {
-                Expression ex = evaluatePostblit(istate, (*ale.elements)[i]);
+                Expression ex = evaluatePostblit(istate, elem);
                 if (exceptionOrCant(ex))
                     return;
             }
@@ -6294,7 +6280,7 @@ public:
         Expressions* keysx = aae.keys;
         Expressions* valuesx = aae.values;
         size_t removed = 0;
-        for (size_t j = 0; j < valuesx.dim; ++j)
+        foreach (j, evalue; *valuesx)
         {
             Expression ekey = (*keysx)[j];
             int eq = ctfeEqual(e.loc, TOK.equal, ekey, index);
@@ -6303,7 +6289,7 @@ public:
             else if (removed != 0)
             {
                 (*keysx)[j - removed] = ekey;
-                (*valuesx)[j - removed] = (*valuesx)[j];
+                (*valuesx)[j - removed] = evalue;
             }
         }
         valuesx.dim = valuesx.dim - removed;
@@ -6457,15 +6443,16 @@ private Expression scrubReturnValue(const ref Loc loc, Expression e)
 // or is an array literal or struct literal of void elements.
 private bool isEntirelyVoid(Expressions* elems)
 {
-    for (size_t i = 0; i < elems.dim; i++)
+    foreach (e; *elems)
     {
-        Expression m = (*elems)[i];
         // It can be NULL for performance reasons,
         // see StructLiteralExp::interpret().
-        if (!m)
+        if (!e)
             continue;
 
-        if (!(m.op == TOK.void_) && !(m.op == TOK.arrayLiteral && isEntirelyVoid((cast(ArrayLiteralExp)m).elements)) && !(m.op == TOK.structLiteral && isEntirelyVoid((cast(StructLiteralExp)m).elements)))
+        if (!(e.op == TOK.void_) &&
+            !(e.op == TOK.arrayLiteral && isEntirelyVoid((cast(ArrayLiteralExp)e).elements)) &&
+            !(e.op == TOK.structLiteral && isEntirelyVoid((cast(StructLiteralExp)e).elements)))
         {
             return false;
         }
@@ -6476,27 +6463,29 @@ private bool isEntirelyVoid(Expressions* elems)
 // Scrub all members of an array. Return false if error
 private Expression scrubArray(const ref Loc loc, Expressions* elems, bool structlit = false)
 {
-    for (size_t i = 0; i < elems.dim; i++)
+    foreach (i, e; *elems)
     {
-        Expression m = (*elems)[i];
         // It can be NULL for performance reasons,
         // see StructLiteralExp::interpret().
-        if (!m)
+        if (!e)
             continue;
 
         // A struct .init may contain void members.
         // Static array members are a weird special case (bug 10994).
-        if (structlit && ((m.op == TOK.void_) || (m.op == TOK.arrayLiteral && m.type.ty == Tsarray && isEntirelyVoid((cast(ArrayLiteralExp)m).elements)) || (m.op == TOK.structLiteral && isEntirelyVoid((cast(StructLiteralExp)m).elements))))
+        if (structlit &&
+            ((e.op == TOK.void_) ||
+             (e.op == TOK.arrayLiteral && e.type.ty == Tsarray && isEntirelyVoid((cast(ArrayLiteralExp)e).elements)) ||
+             (e.op == TOK.structLiteral && isEntirelyVoid((cast(StructLiteralExp)e).elements))))
         {
-            m = null;
+            e = null;
         }
         else
         {
-            m = scrubReturnValue(loc, m);
-            if (CTFEExp.isCantExp(m) || m.op == TOK.error)
-                return m;
+            e = scrubReturnValue(loc, e);
+            if (CTFEExp.isCantExp(e) || e.op == TOK.error)
+                return e;
         }
-        (*elems)[i] = m;
+        (*elems)[i] = e;
     }
     return null;
 }
@@ -6553,12 +6542,11 @@ private Expression scrubCacheValue(const ref Loc loc, Expression e)
 
 private Expression scrubArrayCache(const ref Loc loc, Expressions* elems)
 {
-    for (size_t i = 0; i < elems.dim; i++)
+    foreach (ref e; *elems)
     {
-        Expression m = (*elems)[i];
-        if (!m)
+        if (!e)
             continue;
-        (*elems)[i] = scrubCacheValue(loc, m);
+        e = scrubCacheValue(loc, e);
     }
     return null;
 }
@@ -6931,7 +6919,7 @@ private Expression foreachApplyUtf(InterState* istate, Expression str, Expressio
 
         Expression val = null;
 
-        for (int k = 0; k < charlen; ++k)
+        foreach (k; 0 .. charlen)
         {
             dchar codepoint;
             switch (charType.size())
@@ -6975,13 +6963,13 @@ private Expression evaluateIfBuiltin(InterState* istate, const ref Loc loc, Func
         if (isBuiltin(fd) == BUILTIN.yes)
         {
             Expressions args = Expressions(nargs);
-            for (size_t i = 0; i < args.dim; i++)
+            foreach (i, ref arg; args)
             {
                 Expression earg = (*arguments)[i];
                 earg = interpret(earg, istate);
                 if (exceptionOrCantInterpret(earg))
                     return earg;
-                args[i] = earg;
+                arg = earg;
             }
             e = eval_builtin(loc, fd, &args);
             if (!e)
@@ -6993,25 +6981,37 @@ private Expression evaluateIfBuiltin(InterState* istate, const ref Loc loc, Func
     }
     if (!pthis)
     {
-        Expression firstarg = nargs > 0 ? (*arguments)[0] : null;
-        if (firstarg && firstarg.type.toBasetype().ty == Taarray)
+        if (nargs == 1 || nargs == 3)
         {
-            TypeAArray firstAAtype = cast(TypeAArray)firstarg.type;
-            const id = fd.ident.toChars();
-            if (nargs == 1 && fd.ident == Id.aaLen)
-                return interpret_length(istate, firstarg);
-            if (nargs == 3 && !strcmp(id, "_aaApply"))
-                return interpret_aaApply(istate, firstarg, arguments.data[2]);
-            if (nargs == 3 && !strcmp(id, "_aaApply2"))
-                return interpret_aaApply(istate, firstarg, arguments.data[2]);
-            if (nargs == 1 && !strcmp(id, "keys") && !strcmp(fd.toParent2().ident.toChars(), "object"))
-                return interpret_keys(istate, firstarg, firstAAtype.index.arrayOf());
-            if (nargs == 1 && !strcmp(id, "values") && !strcmp(fd.toParent2().ident.toChars(), "object"))
-                return interpret_values(istate, firstarg, firstAAtype.nextOf().arrayOf());
-            if (nargs == 1 && !strcmp(id, "rehash") && !strcmp(fd.toParent2().ident.toChars(), "object"))
-                return interpret(firstarg, istate);
-            if (nargs == 1 && !strcmp(id, "dup") && !strcmp(fd.toParent2().ident.toChars(), "object"))
-                return interpret_dup(istate, firstarg);
+            Expression firstarg = (*arguments)[0];
+            if (auto firstAAtype = firstarg.type.toBasetype().isTypeAArray())
+            {
+                const id = fd.ident;
+                if (nargs == 1)
+                {
+                    if (id == Id.aaLen)
+                        return interpret_length(istate, firstarg);
+
+                    if (fd.toParent2().ident == Id.object)
+                    {
+                        if (id == Id.keys)
+                            return interpret_keys(istate, firstarg, firstAAtype.index.arrayOf());
+                        if (id == Id.values)
+                            return interpret_values(istate, firstarg, firstAAtype.nextOf().arrayOf());
+                        if (id == Id.rehash)
+                            return interpret(firstarg, istate);
+                        if (id == Id.dup)
+                            return interpret_dup(istate, firstarg);
+                    }
+                }
+                else // (nargs == 3)
+                {
+                    if (id == Id._aaApply)
+                        return interpret_aaApply(istate, firstarg, arguments.data[2]);
+                    if (id == Id._aaApply2)
+                        return interpret_aaApply(istate, firstarg, arguments.data[2]);
+                }
+            }
         }
     }
     if (pthis && !fd.fbody && fd.isCtorDeclaration() && fd.parent && fd.parent.parent && fd.parent.parent.ident == Id.object)
@@ -7022,12 +7022,12 @@ private Expression evaluateIfBuiltin(InterState* istate, const ref Loc loc, Func
             // But we might need some magic if stack tracing gets added to druntime.
             StructLiteralExp se = (cast(ClassReferenceExp)pthis).value;
             assert(arguments.dim <= se.elements.dim);
-            for (size_t i = 0; i < arguments.dim; ++i)
+            foreach (i, arg; *arguments)
             {
-                e = interpret((*arguments)[i], istate);
-                if (exceptionOrCantInterpret(e))
-                    return e;
-                (*se.elements)[i] = e;
+                auto elem = interpret(arg, istate);
+                if (exceptionOrCantInterpret(elem))
+                    return elem;
+                (*se.elements)[i] = elem;
             }
             return CTFEExp.voidexp;
         }
@@ -7049,7 +7049,10 @@ private Expression evaluateIfBuiltin(InterState* istate, const ref Loc loc, Func
             char s = id[idlen - 2]; // string width: 'c', 'w', or 'd'
             char n = id[idlen - 1]; // numParams: 1 or 2.
             // There are 12 combinations
-            if ((n == '1' || n == '2') && (c == 'c' || c == 'w' || c == 'd') && (s == 'c' || s == 'w' || s == 'd') && c != s)
+            if ((n == '1' || n == '2') &&
+                (c == 'c' || c == 'w' || c == 'd') &&
+                (s == 'c' || s == 'w' || s == 'd') &&
+                c != s)
             {
                 Expression str = (*arguments)[0];
                 str = interpret(str, istate);
@@ -7064,21 +7067,19 @@ private Expression evaluateIfBuiltin(InterState* istate, const ref Loc loc, Func
 
 private Expression evaluatePostblit(InterState* istate, Expression e)
 {
-    Type tb = e.type.baseElemOf();
-    if (tb.ty != Tstruct)
+    auto ts = e.type.baseElemOf().isTypeStruct();
+    if (!ts)
         return null;
-    StructDeclaration sd = (cast(TypeStruct)tb).sym;
+    StructDeclaration sd = ts.sym;
     if (!sd.postblit)
         return null;
 
-    if (e.op == TOK.arrayLiteral)
+    if (auto ale = e.isArrayLiteralExp())
     {
-        ArrayLiteralExp ale = cast(ArrayLiteralExp)e;
-        for (size_t i = 0; i < ale.elements.dim; i++)
+        foreach (elem; *ale.elements)
         {
-            e = evaluatePostblit(istate, (*ale.elements)[i]);
-            if (e)
-                return e;
+            if (auto ex = evaluatePostblit(istate, elem))
+                return ex;
         }
         return null;
     }
@@ -7095,18 +7096,17 @@ private Expression evaluatePostblit(InterState* istate, Expression e)
 
 private Expression evaluateDtor(InterState* istate, Expression e)
 {
-    Type tb = e.type.baseElemOf();
-    if (tb.ty != Tstruct)
+    auto ts = e.type.baseElemOf().isTypeStruct();
+    if (!ts)
         return null;
-    StructDeclaration sd = (cast(TypeStruct)tb).sym;
+    StructDeclaration sd = ts.sym;
     if (!sd.dtor)
         return null;
 
-    if (e.op == TOK.arrayLiteral)
+    if (auto ale = e.isArrayLiteralExp())
     {
-        ArrayLiteralExp alex = cast(ArrayLiteralExp)e;
-        for (size_t i = alex.elements.dim; 0 < i--;)
-            e = evaluateDtor(istate, (*alex.elements)[i]);
+        foreach_reverse (elem; *ale.elements)
+            e = evaluateDtor(istate, elem);
     }
     else if (e.op == TOK.structLiteral)
     {

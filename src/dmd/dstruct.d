@@ -136,7 +136,7 @@ extern (C++) void semanticTypeInfo(Scope* sc, Type t)
                 // https://issues.dlang.org/show_bug.cgi?id=15149
                 // if the typeid operand type comes from a
                 // result of auto function, it may be yet speculative.
-                unSpeculative(sc, sd);
+                // unSpeculative(sc, sd);
             }
 
             /* Step 2: If the TypeInfo generation requires sd.semantic3, run it later.
@@ -435,7 +435,7 @@ extern (C++) class StructDeclaration : AggregateDeclaration
             }
         }
 
-        auto tt = Target.toArgTypes(type);
+        auto tt = target.toArgTypes(type);
         size_t dim = tt.arguments.dim;
         if (dim >= 1)
         {
@@ -499,8 +499,8 @@ extern (C++) class StructDeclaration : AggregateDeclaration
             const hasPointers = tb.hasPointers();
             if (hasPointers)
             {
-                if ((stype.alignment() < Target.ptrsize ||
-                     (v.offset & (Target.ptrsize - 1))) &&
+                if ((stype.alignment() < target.ptrsize ||
+                     (v.offset & (target.ptrsize - 1))) &&
                     (sc.func && sc.func.setUnsafe()))
                 {
                     .error(loc, "field `%s.%s` cannot assign to misaligned pointers in `@safe` code",
