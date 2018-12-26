@@ -142,7 +142,7 @@ auto predefinedTargets(string[] targets)
 {
     static findFiles(string dir)
     {
-        return dirEntries(testPath(dir), "*{.d,.sh}", SpanMode.shallow).map!(e => e.name);
+        return testPath(dir).dirEntries("*{.d,.sh}", SpanMode.shallow).map!(e => e.name);
     }
 
     Appender!(string[]) newTargets;
@@ -186,7 +186,7 @@ auto filterTargets(string[] targets, string[string] env)
     bool error;
     foreach (target; targets)
     {
-        if (!exists(testPath(target)))
+        if (!testPath(target).exists)
         {
             writefln("Warning: %s can't be found", target);
             error = true;
@@ -269,9 +269,9 @@ string[string] getEnvironment()
         // auto-tester might run the testsuite with a different $(MODEL) than DMD
         // has been compiled with. Hence we manually check which binary exists.
         // For windows the $(OS) during build is: `windows`
-        int dmdModel = testPath(format(`..\generated\windows\%s\64\dmd%s`, build, exe)).exists ? 64 : 32;
+        int dmdModel = testPath(`..\generated\windows\%s\64\dmd%s`.format(build, exe)).exists ? 64 : 32;
         env.getDefault("MODEL", dmdModel.text);
-        env["DMD"] = testPath(format(`..\generated\windows\%s\%d\dmd%s`, build, dmdModel, exe));
+        env["DMD"] = testPath(`..\generated\windows\%s\%d\dmd%s`.format(build, dmdModel, exe));
     }
     else
     {
@@ -285,10 +285,10 @@ string[string] getEnvironment()
 
         // auto-tester might run the testsuite with a different $(MODEL) than DMD
         // has been compiled with. Hence we manually check which binary exists.
-        int dmdModel = testPath(format("../generated/%s/%s/64/dmd", os, build)).exists ? 64 : 32;
+        const dmdModel = testPath("../generated/%s/%s/64/dmd".format(os, build)).exists ? 64 : 32;
         env.getDefault("MODEL", dmdModel.text);
 
-        auto generatedSuffix = format("generated/%s/%s/%s", os, build, dmdModel);
+        auto generatedSuffix = "generated/%s/%s/%s".format(os, build, dmdModel);
         env["DMD"] = testPath("../" ~ generatedSuffix ~ "/dmd");
 
         // default to PIC on x86_64, use PIC=1/0 to en-/disable PIC.
