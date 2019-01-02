@@ -2,7 +2,7 @@
  * Compiler implementation of the
  * $(LINK2 http://www.dlang.org, D programming language).
  *
- * Copyright:   Copyright (C) 1999-2018 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2019 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 http://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/escape.d, _escape.d)
@@ -698,6 +698,7 @@ bool checkNewEscape(Scope* sc, Expression e, bool gag)
             if (global.params.useDIP25 &&
                      sc._module && sc._module.isRoot())
             {
+                // https://dlang.org/spec/function.html#return-ref-parameters
                 // Only look for errors if in module listed on command line
 
                 if (p == sc.func)
@@ -924,6 +925,7 @@ private bool checkReturnEscapeImpl(Scope* sc, Expression e, bool refs, bool gag)
             else if (global.params.useDIP25 &&
                      sc._module && sc._module.isRoot())
             {
+                // https://dlang.org/spec/function.html#return-ref-parameters
                 // Only look for errors if in module listed on command line
 
                 if (p == sc.func)

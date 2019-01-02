@@ -2,7 +2,7 @@
  * Compiler implementation of the
  * $(LINK2 http://www.dlang.org, D programming language).
  *
- * Copyright:   Copyright (C) 1999-2018 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2019 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 http://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/statementsem.d, _statementsem.d)
@@ -2187,7 +2187,7 @@ else
             if (ifs.match.edtor)
             {
                 Statement sdtor = new DtorExpStatement(ifs.loc, ifs.match.edtor, ifs.match);
-                sdtor = new OnScopeStatement(ifs.loc, TOK.onScopeExit, sdtor);
+                sdtor = new ScopeGuardStatement(ifs.loc, TOK.onScopeExit, sdtor);
                 ifs.ifbody = new CompoundStatement(ifs.loc, sdtor, ifs.ifbody);
                 ifs.match.storage_class |= STC.nodtor;
             }
@@ -3903,7 +3903,7 @@ else
         result = tfs;
     }
 
-    override void visit(OnScopeStatement oss)
+    override void visit(ScopeGuardStatement oss)
     {
         /* https://dlang.org/spec/statement.html#scope-guard-statement
          */

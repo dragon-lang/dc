@@ -3,7 +3,7 @@
  * $(LINK2 http://www.dlang.org, D programming language).
  *
  * Copyright:   Copyright (C) 1984-1998 by Symantec
- *              Copyright (C) 2000-2018 by The D Language Foundation, All Rights Reserved
+ *              Copyright (C) 2000-2019 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 http://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/backend/global.d, backend/global.d)
@@ -105,7 +105,7 @@ Symbol *asm_define_label(const(char)* id);
 version (SCPP)
     char* cpp_mangle(Symbol* s);
 else version (MARS)
-    char* cpp_mangle(Symbol* s);
+    const(char)* cpp_mangle(Symbol* s);
 else
     char* cpp_mangle(Symbol* s) { return &s.Sident[0]; }
 
@@ -357,6 +357,8 @@ baseclass_t *baseclass_find_nest(baseclass_t *bm,Classsym *sbase);
 int baseclass_nitems(baseclass_t *b);
 void symbol_free(Symbol *s);
 SYMIDX symbol_add(Symbol *s);
+SYMIDX symbol_add(symtab_t*, Symbol *s);
+SYMIDX symbol_insert(symtab_t*, Symbol *s, SYMIDX n);
 void freesymtab(Symbol **stab, SYMIDX n1, SYMIDX n2);
 Symbol *symbol_copy(Symbol *s);
 Symbol *symbol_searchlist(symlist_t sl, const(char)* vident);

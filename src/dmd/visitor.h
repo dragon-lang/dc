@@ -1,6 +1,6 @@
 
 /* Compiler implementation of the D programming language
- * Copyright (C) 2013-2018 by The D Language Foundation, All Rights Reserved
+ * Copyright (C) 2013-2019 by The D Language Foundation, All Rights Reserved
  * http://www.digitalmars.com
  * Distributed under the Boost Software License, Version 1.0.
  * http://www.boost.org/LICENSE_1_0.txt
@@ -46,7 +46,7 @@ class SynchronizedStatement;
 class WithStatement;
 class TryCatchStatement;
 class TryFinallyStatement;
-class OnScopeStatement;
+class ScopeGuardStatement;
 class ThrowStatement;
 class DebugStatement;
 class GotoStatement;
@@ -387,7 +387,7 @@ public:
     virtual void visit(ForeachRangeStatement *s) { visit((Statement *)s); }
     virtual void visit(ForeachStatement *s) { visit((Statement *)s); }
     virtual void visit(IfStatement *s) { visit((Statement *)s); }
-    virtual void visit(OnScopeStatement *s) { visit((Statement *)s); }
+    virtual void visit(ScopeGuardStatement *s) { visit((Statement *)s); }
     virtual void visit(ConditionalStatement *s) { visit((Statement *)s); }
     virtual void visit(StaticForeachStatement *s) { visit((Statement *)s); }
     virtual void visit(PragmaStatement *s) { visit((Statement *)s); }

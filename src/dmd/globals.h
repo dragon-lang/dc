@@ -1,6 +1,6 @@
 
 /* Compiler implementation of the D programming language
- * Copyright (C) 1999-2018 by The D Language Foundation, All Rights Reserved
+ * Copyright (C) 1999-2019 by The D Language Foundation, All Rights Reserved
  * written by Walter Bright
  * http://www.digitalmars.com
  * Distributed under the Boost Software License, Version 1.0.
@@ -62,6 +62,12 @@ enum CPU
     // Special values that don't survive past the command line processing
     baseline,           // (default) the minimum capability CPU
     native              // the machine the compiler is being run on
+};
+
+enum CppStdRevision
+{
+    CppStdRevisionCpp98 = 199711,
+    CppStdRevisionCpp11 = 201103
 };
 
 // Put command line switches in here
@@ -128,6 +134,7 @@ struct Param
     bool ehnogc;        // use @nogc exception handling
     bool dtorFields;        // destruct fields of partially constructed objects
                             // https://issues.dlang.org/show_bug.cgi?id=14246
+    unsigned cplusplus;     // version of C++ name mangling to support
     bool markdown;          // enable Markdown replacements in Ddoc
     bool vmarkdown;         // list instances of Markdown replacements in Ddoc
     bool showGaggedErrors;  // print gagged errors anyway
