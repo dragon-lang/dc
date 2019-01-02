@@ -1,6 +1,6 @@
 
 /* Compiler implementation of the D programming language
- * Copyright (C) 2013-2018 by The D Language Foundation, All Rights Reserved
+ * Copyright (C) 2013-2019 by The D Language Foundation, All Rights Reserved
  * written by Iain Buclaw
  * http://www.digitalmars.com
  * Distributed under the Boost Software License, Version 1.0.
@@ -79,6 +79,7 @@ struct Target
     const char *cppTypeInfoMangle(ClassDeclaration *cd);
     const char *cppTypeMangle(Type *t);
     Type *cppParameterType(Parameter *p);
+    bool cppFundamentalType(const Type *t, bool& isFundamental);
     LINK systemLinkage();
     TypeTuple *toArgTypes(Type *t);
     bool isReturnOnStack(TypeFunction *tf, bool needsThis);

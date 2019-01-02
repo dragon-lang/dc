@@ -2,7 +2,7 @@
  * Compiler implementation of the
  * $(LINK2 http://www.dlang.org, D programming language).
  *
- * Copyright:   Copyright (C) 1999-2018 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2019 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 http://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/e2ir.d, _e2ir.d)
@@ -770,22 +770,7 @@ elem *array_toDarray(Type t, elem *e)
                 {
                     // Copy expression to a variable and take the
                     // address of that variable.
-                    Symbol *stmp;
-                    tym_t ty = tybasic(e.Ety);
-
-                    if (ty == TYstruct)
-                    {   uint sz = cast(uint)type_size(e.ET);
-                        if (sz <= 4)
-                            ty = TYint;
-                        else if (sz <= 8)
-                            ty = TYllong;
-                        else if (sz <= 16)
-                            ty = TYcent;
-                    }
-                    e.Ety = ty;
-                    stmp = symbol_genauto(type_fake(ty));
-                    e = el_bin(OPeq, e.Ety, el_var(stmp), e);
-                    e = el_bin(OPcomma, TYnptr, e, el_una(OPaddr, TYnptr, el_var(stmp)));
+                    e = addressElem(e, t);
                     break;
                 }
             }
@@ -988,7 +973,7 @@ Lagain:
             if (r == RTLSYM_MEMSETN)
             {
                 // void *_memsetn(void *p, void *value, int dim, int sizelem)
-                evalue = el_una(OPaddr, TYnptr, evalue);
+                evalue = addressElem(evalue, tb);
                 elem *esz = el_long(TYsize_t, sz);
                 elem *e = el_params(esz, edim, evalue, eptr, null);
                 e = el_bin(OPcall,TYnptr,el_var(getRtlsym(r)),e);

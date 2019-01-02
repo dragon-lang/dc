@@ -7,7 +7,7 @@
  * However, this file will be used to generate the
  * $(LINK2 https://dlang.org/dmd-linux.html, online documentation) and MAN pages.
  *
- * Copyright:   Copyright (C) 1999-2018 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2019 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 http://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/cli.d, _cli.d)
@@ -560,6 +560,16 @@ dmd -cov -unittest myprog.d
             "generate shared library (DLL)",
             `$(UNIX Generate shared library)
              $(WINDOWS Generate DLL library)`,
+        ),
+        Option("stdc++=<standard>",
+            "set c++ compatiblity with <standard>",
+            "Standards supported are:
+            $(UL
+                $(LI $(I c++98) (default): Use C++98 name mangling,
+                    Sets `__traits(getTargetInfo, \"cppStd\")` to `199711`)
+                $(LI $(I c++11): Use C++11 name mangling,
+                    Sets `__traits(getTargetInfo, \"cppStd\")` to `201103`)
+            )",
         ),
         Option("transition=<id>",
             "help with language change identified by 'id'",

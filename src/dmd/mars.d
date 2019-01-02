@@ -7,7 +7,7 @@
  * utilities needed for arguments parsing, path manipulation, etc...
  * This file is not shared with other compilers which use the DMD front-end.
  *
- * Copyright:   Copyright (C) 1999-2018 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2019 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 http://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/mars.d, _mars.d)
@@ -1644,6 +1644,15 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
                 else
                     goto Lerror;
             }
+            else
+                goto Lerror;
+        }
+        else if (startsWith(p + 1, "stdc++=")) // https://dlang.org/dmd.html#switch-std-c%2B%2B
+        {
+            if (strcmp(p + 8, "c++98") == 0)
+                params.cplusplus = CppStdRevision.cpp98;
+            else if (strcmp(p + 8, "c++11") == 0)
+                params.cplusplus = CppStdRevision.cpp11;
             else
                 goto Lerror;
         }

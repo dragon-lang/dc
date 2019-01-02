@@ -2,7 +2,7 @@
  * Compiler implementation of the
  * $(LINK2 http://www.dlang.org, D programming language).
  *
- * Copyright:   Copyright (C) 1999-2018 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2019 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 http://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/link.d, _link.d)
@@ -1053,9 +1053,10 @@ version (Windows)
 
             // try lld-link.exe alongside dmd.exe
             char[MAX_PATH + 1] dmdpath = void;
-            if (GetModuleFileNameA(null, dmdpath.ptr, dmdpath.length) <= MAX_PATH)
+            const len = GetModuleFileNameA(null, dmdpath.ptr, dmdpath.length);
+            if (len <= MAX_PATH)
             {
-                auto lldpath = FileName.replaceName(dmdpath, "lld-link.exe");
+                auto lldpath = FileName.replaceName(dmdpath[0 .. len], "lld-link.exe");
                 if (FileName.exists(lldpath))
                     return lldpath.ptr;
             }
