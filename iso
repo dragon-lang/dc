@@ -1,0 +1,126 @@
+#!/bin/bash
+#
+# Run a command in an isolated nix environment
+#
+set -euo pipefail
+
+# TODO: allow the host tools to be overriden
+#       if this is supported, the host tools will need to be included in the
+#       path of 'host_tools_bin'
+
+# These are the tools that are expected to be provided by the host
+host_build_tools="mkdir ln mv cp rm which uname bash tr awk git"
+host_test_tools="cat dirname wc head diff grep date sed"
+
+if [ "$#" == "0" ]; then
+  echo "Run a command in an isolated environment restricted to a predefined"
+  echo "set of programs and packages."
+  echo
+  echo "Run a command with a predefined profile:"
+  echo "  ./iso dmd-build|ldc-build <command>..."
+  echo
+  echo "Run a command set of packages:"
+  echo "  ./iso custom 'packages...' <command>..."
+  echo
+  echo "Examples:"
+  echo "  ./iso dmd-build dmd"
+  echo "  ./iso custom 'hello bash' hello"
+
+  exit 1
+fi
+
+echorun() {
+  echo "$@"
+  "$@"
+}
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
+function setup_host_tools()
+{
+  local dir=$1
+  local tools=$2
+  mkdir -p "$dir"
+  # TODO: some tools could either be done by the host or added
+  #       to the packages list, i.e. git
+  for tool in $tools; do
+    link="$dir/$tool"
+    if [ ! -f "$link" ]; then
+      target=$(which $tool)
+      if [ "$target" == "" ]; then
+        echo "Error: cannot find program '$tool'"
+        exit 1
+      fi
+      echorun ln -s "$target" "$link"
+    fi
+  done
+  extra_paths="$extra_paths:$dir"
+}
+
+extra_paths=""
+
+profile_name=$1
+shift
+packages="gdb-8.2 gcc-7.3.0 binutils-2.30 gnumake-4.2.1"
+#dmd_build_packages="dmd-2.081.2"
+dmd_build_packages="dmd"
+if [ "$profile_name" == "dmd-build" ]; then
+  packages="$packages $dmd_build_packages"
+elif [ "$profile_name" == "dmd-test" ]; then
+  packages="$packages $dmd_build_packages"
+  setup_host_tools "$repo_dir/generated/host_test_tools" "$host_test_tools"
+elif [ "$profile_name" == "ldc-build" ]; then
+  packages="$packages ldc-1.11.0"
+elif [ "$profile_name" == "custom" ]; then
+  packages=$1
+  shift
+else
+  echo "Error: unknown profile '$profile_name'"
+  exit 1
+fi 
+
+setup_host_tools "$repo_dir/generated/host_build_tools" "$host_build_tools"
+
+nix_init=~/.nix-profile/etc/profile.d/nix.sh
+
+if [ -f $nix_init ]; then
+  echo Nix is installed
+else
+  echo Installing Nix...
+  echorun curl https://nixos.org/nix/install -o ~/install_nix --fail
+  chmod a+x ~/install_nix
+  ~/install_nix
+  rm ~/install_nix
+fi
+
+# the nix init script references unset variables
+set +u
+echorun source $nix_init
+set -u
+
+packages_dir=$(echo "$packages" | tr -d ' ')
+profile_dir="$repo_dir/generated/nix_profiles/$packages_dir"
+if [ -d "$profile_dir" ]; then
+  echo This package set profile has already been setup
+else
+  echo Creating nix profile...
+  mkdir -p "$profile_dir.temp"
+  echorun nix-env --profile "$profile_dir.temp/profile" -i $packages
+  mv "$profile_dir.temp" "$profile_dir"
+fi
+
+# create a convenient symbolic link for the short profile name
+shortname="$repo_dir/generated/nix_profiles/$profile_name"
+[ -e $shortname ] && unlink $shortname
+ln -s "$packages_dir" "$shortname"
+
+# unset environment variable because it causes bash to print warnings
+echorun unset LC_ALL
+
+echorun export PATH="$profile_dir/profile/bin:$extra_paths"
+
+# NOTE: right now for bash to work properly, we need to add these extra directories
+#       to PATH, when we don't need bash anymore, we can remove them
+echorun export PATH="/bin:/usr/bin:$PATH"
+
+echorun exec "$@"
