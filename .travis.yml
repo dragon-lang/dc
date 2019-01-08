@@ -8,7 +8,7 @@ before_script:
 script:
 # install rund
 - git clone --depth=1 --branch=master https://github.com/marler8997/rund.git ../rund
-- dmd -I../rund/src -run ../rund/make.d build
+- dmd -i -I../rund/src -run ../rund/make.d build
 - sudo cp ../rund/bin/rund /bin/rund
 # build dmd
 - ./src/build.d
