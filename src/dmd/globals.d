@@ -54,6 +54,7 @@ enum CHECKACTION : ubyte
     D,            // call D assert on failure
     C,            // call C assert on failure
     halt,         // cause program halt on failure
+    context,      // call D assert with the error context on failure
 }
 
 enum CPU
@@ -92,7 +93,9 @@ enum JsonFieldFlags : uint
 enum CppStdRevision : uint
 {
     cpp98 = 199711,
-    cpp11 = 201103
+    cpp11 = 201103,
+    cpp14 = 201402,
+    cpp17 = 201703
 }
 
 // Put command line switches in here
@@ -135,6 +138,7 @@ struct Param
     bool useUnitTests;          // generate unittest code
     bool useInline = false;     // inline expand functions
     bool useDIP25;          // implement http://wiki.dlang.org/DIP25
+    bool noDIP25;           // revert to pre-DIP25 behavior
     bool release;           // build release version
     bool preservePaths;     // true means don't strip path from source file
     Diagnostic warnings = Diagnostic.off;  // how compiler warnings are handled

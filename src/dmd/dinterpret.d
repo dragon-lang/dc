@@ -54,8 +54,24 @@ import dmd.visitor;
  */
 public Expression ctfeInterpret(Expression e)
 {
-    if (e.op == TOK.error)
-        return e;
+    switch (e.op)
+    {
+        case TOK.int64:
+        case TOK.float64:
+        case TOK.complex80:
+        case TOK.null_:
+        case TOK.string_:
+            if (e.type.ty == Terror)
+                return new ErrorExp();
+            goto case TOK.error;
+
+        case TOK.error:
+            return e;
+
+        default:
+            break;
+    }
+
     assert(e.type); // https://issues.dlang.org/show_bug.cgi?id=14642
     //assert(e.type.ty != Terror);    // FIXME
     if (e.type.ty == Terror)
@@ -2317,7 +2333,7 @@ public:
                      * e is a value that is not yet owned by CTFE.
                      * Mark as "cached", and use it directly during interpretation.
                      */
-                    e = scrubCacheValue(v.loc, e);
+                    e = scrubCacheValue(e);
                     ctfeStack.saveGlobalConstant(v, e);
                 }
                 else
@@ -3070,7 +3086,7 @@ public:
                 // Call constructor
                 if (!e.member.fbody)
                 {
-                    Expression ctorfail = evaluateIfBuiltin(istate, e.loc, e.member, e.arguments, eref);
+                    Expression ctorfail = evaluateIfBuiltin(pue, istate, e.loc, e.member, e.arguments, eref);
                     if (ctorfail)
                     {
                         if (exceptionOrCant(ctorfail))
@@ -5011,7 +5027,7 @@ public:
         }
 
         // Check for built-in functions
-        result = evaluateIfBuiltin(istate, e.loc, fd, e.arguments, pthis);
+        result = evaluateIfBuiltin(pue, istate, e.loc, fd, e.arguments, pthis);
         if (result)
             return;
 
@@ -5670,20 +5686,38 @@ public:
         {
             printf("%s CatExp::interpret() %s\n", e.loc.toChars(), e.toChars());
         }
-        {
-        Expression e1 = interpret(e.e1, istate);
+
+        UnionExp ue1 = void;
+        Expression e1 = interpret(&ue1, e.e1, istate);
         if (exceptionOrCant(e1))
             return;
-        Expression e2 = interpret(e.e2, istate);
+
+        UnionExp ue2 = void;
+        Expression e2 = interpret(&ue2, e.e2, istate);
         if (exceptionOrCant(e2))
             return;
 
         UnionExp e1tmp = void;
         e1 = resolveSlice(e1, &e1tmp);
+
         UnionExp e2tmp = void;
         e2 = resolveSlice(e2, &e2tmp);
-        result = ctfeCat(e.loc, e.type, e1, e2).copy();
+
+        /* e1 and e2 can't go on the stack because of x~[y] and [x]~y will
+         * result in [x,y] and then x or y is on the stack.
+         * But if they are both strings, we can, because it isn't the x~[y] case.
+         */
+        if (!(e1.op == TOK.string_ && e2.op == TOK.string_))
+        {
+            if (e1 == ue1.exp())
+                e1 = ue1.copy();
+            if (e2 == ue2.exp())
+                e2 = ue2.copy();
         }
+
+        *pue = ctfeCat(e.loc, e.type, e1, e2);
+        result = pue.exp();
+
         if (CTFEExp.isCantExp(result))
         {
             e.error("`%s` cannot be interpreted at compile time", e.toChars());
@@ -5702,7 +5736,7 @@ public:
                     return;
             }
         }
-        if (auto se = result.isStringExp())
+        else if (auto se = result.isStringExp())
             se.ownedByCtfe = OwnedBy.ctfe;
     }
 
@@ -6418,44 +6452,105 @@ Expression interpret(Statement s, InterState* istate)
     return result;
 }
 
-/* All results destined for use outside of CTFE need to have their CTFE-specific
+/**
+ * All results destined for use outside of CTFE need to have their CTFE-specific
  * features removed.
- * In particular, all slices must be resolved.
+ * In particular,
+ * 1. all slices must be resolved.
+ * 2. all .ownedByCtfe set to OwnedBy.code
  */
 private Expression scrubReturnValue(const ref Loc loc, Expression e)
 {
+    /* Returns: true if e is void,
+     * or is an array literal or struct literal of void elements.
+     */
+    static bool isVoid(const Expression e) pure
+    {
+        if (e.op == TOK.void_)
+            return true;
+
+        static bool isEntirelyVoid(const Expressions* elems)
+        {
+            foreach (e; *elems)
+            {
+                // It can be NULL for performance reasons,
+                // see StructLiteralExp::interpret().
+                if (e && !isVoid(e))
+                    return false;
+            }
+            return true;
+        }
+
+        if (auto ale = e.isArrayLiteralExp())
+            return isEntirelyVoid(ale.elements);
+
+        if (auto sle = e.isStructLiteralExp())
+            return isEntirelyVoid(sle.elements);
+
+        return false;
+    }
+
+
+    /* Scrub all elements of elems[].
+     * Returns: null for success, error Expression for failure
+     */
+    Expression scrubArray(Expressions* elems, bool structlit = false)
+    {
+        foreach (ref e; *elems)
+        {
+            // It can be NULL for performance reasons,
+            // see StructLiteralExp::interpret().
+            if (!e)
+                continue;
+
+            // A struct .init may contain void members.
+            // Static array members are a weird special case https://issues.dlang.org/show_bug.cgi?id=10994
+            if (structlit && isVoid(e))
+            {
+                e = null;
+            }
+            else
+            {
+                e = scrubReturnValue(loc, e);
+                if (CTFEExp.isCantExp(e) || e.op == TOK.error)
+                    return e;
+            }
+        }
+        return null;
+    }
+
+    Expression scrubSE(StructLiteralExp sle)
+    {
+        sle.ownedByCtfe = OwnedBy.code;
+        if (!(sle.stageflags & stageScrub))
+        {
+            const old = sle.stageflags;
+            sle.stageflags |= stageScrub;       // prevent infinite recursion
+            if (auto ex = scrubArray(sle.elements, true))
+                return ex;
+            sle.stageflags = old;
+        }
+        return null;
+    }
+
     if (e.op == TOK.classReference)
     {
-        StructLiteralExp se = (cast(ClassReferenceExp)e).value;
-        se.ownedByCtfe = OwnedBy.code;
-        if (!(se.stageflags & stageScrub))
-        {
-            int old = se.stageflags;
-            se.stageflags |= stageScrub;
-            if (Expression ex = scrubArray(loc, se.elements, true))
-                return ex;
-            se.stageflags = old;
-        }
+        StructLiteralExp sle = (cast(ClassReferenceExp)e).value;
+        if (auto ex = scrubSE(sle))
+            return ex;
     }
-    else if (e.op == TOK.void_)
+    else if (auto vie = e.isVoidInitExp())
     {
-        error(loc, "uninitialized variable `%s` cannot be returned from CTFE", (cast(VoidInitExp)e).var.toChars());
+        error(loc, "uninitialized variable `%s` cannot be returned from CTFE", vie.var.toChars());
         return new ErrorExp();
     }
 
     e = resolveSlice(e);
 
-    if (auto se = e.isStructLiteralExp())
+    if (auto sle = e.isStructLiteralExp())
     {
-        se.ownedByCtfe = OwnedBy.code;
-        if (!(se.stageflags & stageScrub))
-        {
-            int old = se.stageflags;
-            se.stageflags |= stageScrub;
-            if (Expression ex = scrubArray(loc, se.elements, true))
-                return ex;
-            se.stageflags = old;
-        }
+        if (auto ex = scrubSE(sle))
+            return ex;
     }
     else if (auto se = e.isStringExp())
     {
@@ -6464,98 +6559,59 @@ private Expression scrubReturnValue(const ref Loc loc, Expression e)
     else if (auto ale = e.isArrayLiteralExp())
     {
         ale.ownedByCtfe = OwnedBy.code;
-        if (Expression ex = scrubArray(loc, ale.elements))
+        if (auto ex = scrubArray(ale.elements))
             return ex;
     }
     else if (auto aae = e.isAssocArrayLiteralExp())
     {
         aae.ownedByCtfe = OwnedBy.code;
-        if (Expression ex = scrubArray(loc, aae.keys))
+        if (auto ex = scrubArray(aae.keys))
             return ex;
-        if (Expression ex = scrubArray(loc, aae.values))
+        if (auto ex = scrubArray(aae.values))
             return ex;
         aae.type = toBuiltinAAType(aae.type);
     }
     return e;
 }
 
-// Return true if every element is either void,
-// or is an array literal or struct literal of void elements.
-private bool isEntirelyVoid(Expressions* elems)
+/**************************************
+ * Transitively set all .ownedByCtfe to OwnedBy.cache
+ */
+private Expression scrubCacheValue(Expression e)
 {
-    foreach (e; *elems)
-    {
-        // It can be NULL for performance reasons,
-        // see StructLiteralExp::interpret().
-        if (!e)
-            continue;
+    if (!e)
+        return e;
 
-        if (!(e.op == TOK.void_) &&
-            !(e.op == TOK.arrayLiteral && isEntirelyVoid((cast(ArrayLiteralExp)e).elements)) &&
-            !(e.op == TOK.structLiteral && isEntirelyVoid((cast(StructLiteralExp)e).elements)))
-        {
-            return false;
-        }
+    Expression scrubArrayCache(Expressions* elems)
+    {
+        foreach (ref e; *elems)
+            e = scrubCacheValue(e);
+        return null;
     }
-    return true;
-}
 
-// Scrub all members of an array. Return false if error
-private Expression scrubArray(const ref Loc loc, Expressions* elems, bool structlit = false)
-{
-    foreach (i, e; *elems)
+    Expression scrubSE(StructLiteralExp sle)
     {
-        // It can be NULL for performance reasons,
-        // see StructLiteralExp::interpret().
-        if (!e)
-            continue;
-
-        // A struct .init may contain void members.
-        // Static array members are a weird special case (bug 10994).
-        if (structlit &&
-            ((e.op == TOK.void_) ||
-             (e.op == TOK.arrayLiteral && e.type.ty == Tsarray && isEntirelyVoid((cast(ArrayLiteralExp)e).elements)) ||
-             (e.op == TOK.structLiteral && isEntirelyVoid((cast(StructLiteralExp)e).elements))))
-        {
-            e = null;
-        }
-        else
-        {
-            e = scrubReturnValue(loc, e);
-            if (CTFEExp.isCantExp(e) || e.op == TOK.error)
-                return e;
-        }
-        (*elems)[i] = e;
-    }
-    return null;
-}
-
-private Expression scrubCacheValue(const ref Loc loc, Expression e)
-{
-    if (e.op == TOK.classReference)
-    {
-        StructLiteralExp sle = (cast(ClassReferenceExp)e).value;
         sle.ownedByCtfe = OwnedBy.cache;
         if (!(sle.stageflags & stageScrub))
         {
             const old = sle.stageflags;
-            sle.stageflags |= stageScrub;
-            if (Expression ex = scrubArrayCache(loc, sle.elements))
+            sle.stageflags |= stageScrub;       // prevent infinite recursion
+            if (auto ex = scrubArrayCache(sle.elements))
                 return ex;
             sle.stageflags = old;
         }
+        return null;
+    }
+
+    if (e.op == TOK.classReference)
+    {
+        if (auto ex = scrubSE((cast(ClassReferenceExp)e).value))
+            return ex;
     }
     else if (auto sle = e.isStructLiteralExp())
     {
-        sle.ownedByCtfe = OwnedBy.cache;
-        if (!(sle.stageflags & stageScrub))
-        {
-            int old = sle.stageflags;
-            sle.stageflags |= stageScrub;
-            if (Expression ex = scrubArrayCache(loc, sle.elements))
-                return ex;
-            sle.stageflags = old;
-        }
+        if (auto ex = scrubSE(sle))
+            return ex;
     }
     else if (auto se = e.isStringExp())
     {
@@ -6564,37 +6620,26 @@ private Expression scrubCacheValue(const ref Loc loc, Expression e)
     else if (auto ale = e.isArrayLiteralExp())
     {
         ale.ownedByCtfe = OwnedBy.cache;
-        if (Expression ex = scrubArrayCache(loc, ale.elements))
+        if (Expression ex = scrubArrayCache(ale.elements))
             return ex;
     }
     else if (auto aae = e.isAssocArrayLiteralExp())
     {
         aae.ownedByCtfe = OwnedBy.cache;
-        if (Expression ex = scrubArrayCache(loc, aae.keys))
+        if (auto ex = scrubArrayCache(aae.keys))
             return ex;
-        if (Expression ex = scrubArrayCache(loc, aae.values))
+        if (auto ex = scrubArrayCache(aae.values))
             return ex;
     }
     return e;
 }
 
-private Expression scrubArrayCache(const ref Loc loc, Expressions* elems)
-{
-    foreach (ref e; *elems)
-    {
-        if (!e)
-            continue;
-        e = scrubCacheValue(loc, e);
-    }
-    return null;
-}
-
 /******************************* Special Functions ***************************/
 
-private Expression interpret_length(InterState* istate, Expression earg)
+private Expression interpret_length(UnionExp* pue, InterState* istate, Expression earg)
 {
     //printf("interpret_length()\n");
-    earg = interpret(earg, istate);
+    earg = interpret(pue, earg, istate);
     if (exceptionOrCantInterpret(earg))
         return earg;
     dinteger_t len = 0;
@@ -6602,60 +6647,71 @@ private Expression interpret_length(InterState* istate, Expression earg)
         len = aae.keys.dim;
     else
         assert(earg.op == TOK.null_);
-    Expression e = new IntegerExp(earg.loc, len, Type.tsize_t);
-    return e;
+    emplaceExp!(IntegerExp)(pue, earg.loc, len, Type.tsize_t);
+    return pue.exp();
 }
 
-private Expression interpret_keys(InterState* istate, Expression earg, Type returnType)
+private Expression interpret_keys(UnionExp* pue, InterState* istate, Expression earg, Type returnType)
 {
     debug (LOG)
     {
         printf("interpret_keys()\n");
     }
-    earg = interpret(earg, istate);
+    earg = interpret(pue, earg, istate);
     if (exceptionOrCantInterpret(earg))
         return earg;
     if (earg.op == TOK.null_)
-        return new NullExp(earg.loc, returnType);
+    {
+        emplaceExp!(NullExp)(pue, earg.loc, earg.type);
+        return pue.exp();
+    }
     if (earg.op != TOK.assocArrayLiteral && earg.type.toBasetype().ty != Taarray)
         return null;
     AssocArrayLiteralExp aae = earg.isAssocArrayLiteralExp();
     auto ae = new ArrayLiteralExp(aae.loc, returnType, aae.keys);
     ae.ownedByCtfe = aae.ownedByCtfe;
-    return copyLiteral(ae).copy();
+    *pue = copyLiteral(ae);
+    return pue.exp();
 }
 
-private Expression interpret_values(InterState* istate, Expression earg, Type returnType)
+private Expression interpret_values(UnionExp* pue, InterState* istate, Expression earg, Type returnType)
 {
     debug (LOG)
     {
         printf("interpret_values()\n");
     }
-    earg = interpret(earg, istate);
+    earg = interpret(pue, earg, istate);
     if (exceptionOrCantInterpret(earg))
         return earg;
     if (earg.op == TOK.null_)
-        return new NullExp(earg.loc, returnType);
+    {
+        emplaceExp!(NullExp)(pue, earg.loc, earg.type);
+        return pue.exp();
+    }
     if (earg.op != TOK.assocArrayLiteral && earg.type.toBasetype().ty != Taarray)
         return null;
     auto aae = earg.isAssocArrayLiteralExp();
     auto ae = new ArrayLiteralExp(aae.loc, returnType, aae.values);
     ae.ownedByCtfe = aae.ownedByCtfe;
     //printf("result is %s\n", e.toChars());
-    return copyLiteral(ae).copy();
+    *pue = copyLiteral(ae);
+    return pue.exp();
 }
 
-private Expression interpret_dup(InterState* istate, Expression earg)
+private Expression interpret_dup(UnionExp* pue, InterState* istate, Expression earg)
 {
     debug (LOG)
     {
         printf("interpret_dup()\n");
     }
-    earg = interpret(earg, istate);
+    earg = interpret(pue, earg, istate);
     if (exceptionOrCantInterpret(earg))
         return earg;
     if (earg.op == TOK.null_)
-        return new NullExp(earg.loc, earg.type);
+    {
+        emplaceExp!(NullExp)(pue, earg.loc, earg.type);
+        return pue.exp();
+    }
     if (earg.op != TOK.assocArrayLiteral && earg.type.toBasetype().ty != Taarray)
         return null;
     auto aae = copyLiteral(earg).copy().isAssocArrayLiteralExp();
@@ -6672,13 +6728,16 @@ private Expression interpret_dup(InterState* istate, Expression earg)
 }
 
 // signature is int delegate(ref Value) OR int delegate(ref Key, ref Value)
-private Expression interpret_aaApply(InterState* istate, Expression aa, Expression deleg)
+private Expression interpret_aaApply(UnionExp* pue, InterState* istate, Expression aa, Expression deleg)
 {
     aa = interpret(aa, istate);
     if (exceptionOrCantInterpret(aa))
         return aa;
     if (aa.op != TOK.assocArrayLiteral)
-        return new IntegerExp(deleg.loc, 0, Type.tsize_t);
+    {
+        emplaceExp!(IntegerExp)(pue, deleg.loc, 0, Type.tsize_t);
+        return pue.exp();
+    }
 
     FuncDeclaration fd = null;
     Expression pthis = null;
@@ -6735,7 +6794,7 @@ private Expression interpret_aaApply(InterState* istate, Expression aa, Expressi
 /* Decoding UTF strings for foreach loops. Duplicates the functionality of
  * the twelve _aApplyXXn functions in aApply.d in the runtime.
  */
-private Expression foreachApplyUtf(InterState* istate, Expression str, Expression deleg, bool rvs)
+private Expression foreachApplyUtf(UnionExp* pue, InterState* istate, Expression str, Expression deleg, bool rvs)
 {
     debug (LOG)
     {
@@ -6759,7 +6818,10 @@ private Expression foreachApplyUtf(InterState* istate, Expression str, Expressio
     Type indexType = numParams == 2 ? (*fd.parameters)[0].type : Type.tsize_t;
     size_t len = cast(size_t)resolveArrayLength(str);
     if (len == 0)
-        return new IntegerExp(deleg.loc, 0, indexType);
+    {
+        emplaceExp!(IntegerExp)(pue, deleg.loc, 0, indexType);
+        return pue.exp();
+    }
 
     str = resolveSlice(str);
 
@@ -6984,7 +7046,7 @@ private Expression foreachApplyUtf(InterState* istate, Expression str, Expressio
 /* If this is a built-in function, return the interpreted result,
  * Otherwise, return NULL.
  */
-private Expression evaluateIfBuiltin(InterState* istate, const ref Loc loc, FuncDeclaration fd, Expressions* arguments, Expression pthis)
+private Expression evaluateIfBuiltin(UnionExp* pue, InterState* istate, const ref Loc loc, FuncDeclaration fd, Expressions* arguments, Expression pthis)
 {
     Expression e = null;
     size_t nargs = arguments ? arguments.dim : 0;
@@ -7020,26 +7082,26 @@ private Expression evaluateIfBuiltin(InterState* istate, const ref Loc loc, Func
                 if (nargs == 1)
                 {
                     if (id == Id.aaLen)
-                        return interpret_length(istate, firstarg);
+                        return interpret_length(pue, istate, firstarg);
 
                     if (fd.toParent2().ident == Id.object)
                     {
                         if (id == Id.keys)
-                            return interpret_keys(istate, firstarg, firstAAtype.index.arrayOf());
+                            return interpret_keys(pue, istate, firstarg, firstAAtype.index.arrayOf());
                         if (id == Id.values)
-                            return interpret_values(istate, firstarg, firstAAtype.nextOf().arrayOf());
+                            return interpret_values(pue, istate, firstarg, firstAAtype.nextOf().arrayOf());
                         if (id == Id.rehash)
-                            return interpret(firstarg, istate);
+                            return interpret(pue, firstarg, istate);
                         if (id == Id.dup)
-                            return interpret_dup(istate, firstarg);
+                            return interpret_dup(pue, istate, firstarg);
                     }
                 }
                 else // (nargs == 3)
                 {
                     if (id == Id._aaApply)
-                        return interpret_aaApply(istate, firstarg, arguments.data[2]);
+                        return interpret_aaApply(pue, istate, firstarg, arguments.data[2]);
                     if (id == Id._aaApply2)
-                        return interpret_aaApply(istate, firstarg, arguments.data[2]);
+                        return interpret_aaApply(pue, istate, firstarg, arguments.data[2]);
                 }
             }
         }
@@ -7088,7 +7150,7 @@ private Expression evaluateIfBuiltin(InterState* istate, const ref Loc loc, Func
                 str = interpret(str, istate);
                 if (exceptionOrCantInterpret(str))
                     return str;
-                return foreachApplyUtf(istate, str, (*arguments)[1], rvs);
+                return foreachApplyUtf(pue, istate, str, (*arguments)[1], rvs);
             }
         }
     }
