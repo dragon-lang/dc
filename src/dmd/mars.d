@@ -1435,6 +1435,8 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
                 params.checkAction = CHECKACTION.C;
             else if (strcmp(p + 13, "halt") == 0)
                 params.checkAction = CHECKACTION.halt;
+            else if (strcmp(p + 13, "context") == 0)
+                params.checkAction = CHECKACTION.context;
             else
                 goto Lerror;
         }
@@ -1653,6 +1655,10 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
                 params.cplusplus = CppStdRevision.cpp98;
             else if (strcmp(p + 8, "c++11") == 0)
                 params.cplusplus = CppStdRevision.cpp11;
+            else if (strcmp(p + 8, "c++14") == 0)
+                params.cplusplus = CppStdRevision.cpp14;
+            else if (strcmp(p + 8, "c++17") == 0)
+                params.cplusplus = CppStdRevision.cpp17;
             else
                 goto Lerror;
         }
@@ -2246,6 +2252,9 @@ private void reconcileCommands(ref Param params, size_t numSrcFiles)
             //fatal();
         }
     }
+
+    if (params.noDIP25)
+        params.useDIP25 = false;
 }
 
 /**

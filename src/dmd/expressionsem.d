@@ -1642,7 +1642,10 @@ private bool checkDefCtor(Loc loc, Type t)
  *      4. add hidden _arguments[] argument
  *      5. call copy constructor for struct value arguments
  * Params:
+ *      loc       = location of function call
+ *      sc        = context
  *      tf        = type of the function
+ *      ethis     = `this` argument, `null` if none or not known
  *      tthis     = type of `this` argument, `null` if no `this` argument
  *      arguments = array of actual arguments to function call
  *      fd        = the function being called, `null` if called indirectly
@@ -1652,7 +1655,8 @@ private bool checkDefCtor(Loc loc, Type t)
  *      true    errors happened
  */
 private bool functionParameters(const ref Loc loc, Scope* sc,
-    TypeFunction tf, Type tthis, Expressions* arguments, FuncDeclaration fd, Type* prettype, Expression* peprefix)
+    TypeFunction tf, Expression ethis, Type tthis, Expressions* arguments, FuncDeclaration fd,
+    Type* prettype, Expression* peprefix)
 {
     //printf("functionParameters() %s\n", fd ? fd.toChars() : "");
     assert(arguments);
@@ -1881,6 +1885,12 @@ private bool functionParameters(const ref Loc loc, Scope* sc,
             return errorInout(wildmatch);
     }
 
+    Expression firstArg = ((tf.next && tf.next.ty == Tvoid || isCtorCall) &&
+                           tthis &&
+                           tthis.isMutable() && tthis.toBasetype().ty == Tstruct &&
+                           tthis.hasPointers())
+                          ? ethis : null;
+
     assert(nargs >= nparams);
     foreach (const i, arg; (*arguments)[0 .. nargs])
     {
@@ -1934,13 +1944,21 @@ private bool functionParameters(const ref Loc loc, Scope* sc,
             //printf("type: %s\n", arg.type.toChars());
             //printf("param: %s\n", p.toChars());
 
-            if (tf.parameterEscapes(tthis, p))
+            if (firstArg && p.storageClass & STC.return_)
+            {
+                /* Argument value can be assigned to firstArg.
+                 * Check arg to see if it matters.
+                 */
+                if (global.params.vsafe)
+                    err |= checkParamArgumentReturn(sc, firstArg, arg, false);
+            }
+            else if (tf.parameterEscapes(tthis, p))
             {
                 /* Argument value can escape from the called function.
                  * Check arg to see if it matters.
                  */
                 if (global.params.vsafe)
-                    err |= checkParamArgumentEscape(sc, fd, p.ident, arg, false);
+                    err |= checkParamArgumentEscape(sc, fd, p, arg, false);
             }
             else
             {
@@ -1977,6 +1995,19 @@ private bool functionParameters(const ref Loc loc, Scope* sc,
                 }
             }
             arg = arg.optimize(WANTvalue, (p.storageClass & (STC.ref_ | STC.out_)) != 0);
+
+            /* Determine if this parameter is the "first reference" parameter through which
+             * later "return" arguments can be stored.
+             */
+            if (i == 0 && !tthis && p.storageClass & (STC.ref_ | STC.out_) && p.type &&
+                (tf.next && tf.next.ty == Tvoid || isCtorCall))
+            {
+                Type tb = p.type.baseElemOf();
+                if (tb.isMutable() && tb.hasPointers())
+                {
+                    firstArg = arg;
+                }
+            }
         }
         else
         {
@@ -3374,7 +3405,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
 
                 TypeFunction tf = cast(TypeFunction)f.type;
                 Type rettype;
-                if (functionParameters(exp.loc, sc, tf, null, exp.newargs, f, &rettype, &newprefix))
+                if (functionParameters(exp.loc, sc, tf, null, null, exp.newargs, f, &rettype, &newprefix))
                     return setError();
 
                 exp.allocator = f.isNewDeclaration();
@@ -3401,7 +3432,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 TypeFunction tf = cast(TypeFunction)f.type;
                 if (!exp.arguments)
                     exp.arguments = new Expressions();
-                if (functionParameters(exp.loc, sc, tf, exp.type, exp.arguments, f, &exp.type, &exp.argprefix))
+                if (functionParameters(exp.loc, sc, tf, null, exp.type, exp.arguments, f, &exp.type, &exp.argprefix))
                     return setError();
 
                 exp.member = f.isCtorDeclaration();
@@ -3448,7 +3479,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
 
                 TypeFunction tf = cast(TypeFunction)f.type;
                 Type rettype;
-                if (functionParameters(exp.loc, sc, tf, null, exp.newargs, f, &rettype, &newprefix))
+                if (functionParameters(exp.loc, sc, tf, null, null, exp.newargs, f, &rettype, &newprefix))
                     return setError();
 
                 exp.allocator = f.isNewDeclaration();
@@ -3475,7 +3506,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 TypeFunction tf = cast(TypeFunction)f.type;
                 if (!exp.arguments)
                     exp.arguments = new Expressions();
-                if (functionParameters(exp.loc, sc, tf, exp.type, exp.arguments, f, &exp.type, &exp.argprefix))
+                if (functionParameters(exp.loc, sc, tf, null, exp.type, exp.arguments, f, &exp.type, &exp.argprefix))
                     return setError();
 
                 exp.member = f.isCtorDeclaration();
@@ -4306,7 +4337,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 tthis = ue.e1.type;
                 if (!(exp.f.type.ty == Tfunction && (cast(TypeFunction)exp.f.type).isscope))
                 {
-                    if (global.params.vsafe && checkParamArgumentEscape(sc, exp.f, Id.This, ethis, false))
+                    if (global.params.vsafe && checkParamArgumentEscape(sc, exp.f, null, ethis, false))
                         return setError();
                 }
             }
@@ -4696,7 +4727,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         Expression argprefix;
         if (!exp.arguments)
             exp.arguments = new Expressions();
-        if (functionParameters(exp.loc, sc, cast(TypeFunction)t1, tthis, exp.arguments, exp.f, &exp.type, &argprefix))
+        if (functionParameters(exp.loc, sc, cast(TypeFunction)t1, ethis, tthis, exp.arguments, exp.f, &exp.type, &argprefix))
             return setError();
 
         if (!exp.type)
@@ -5512,6 +5543,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             printf("AssertExp::semantic('%s')\n", exp.toChars());
         }
 
+        // save expression as a string before any semantic expansion
+        auto assertExpMsg = exp.msg ? null : exp.toChars();
+
         if (Expression ex = unaSemantic(exp, sc))
         {
             result = ex;
@@ -5522,9 +5556,84 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         exp.e1 = exp.e1.optimize(WANTvalue);
         exp.e1 = exp.e1.toBoolean(sc);
 
+        if (!exp.msg && global.params.checkAction == CHECKACTION.context)
+        // no message - use assert expression as msg
+        {
+            /*
+            {
+              auto a = e1, b = e2;
+              assert(a == b, _d_assert_fail!"=="(a, b));
+            }()
+            */
+            const tok = exp.e1.op;
+            bool isEqualsCallExpression;
+            if (tok == TOK.call)
+            {
+                const callExp = cast(CallExp) exp.e1;
+                const callExpIdent = callExp.f.ident;
+                isEqualsCallExpression = callExpIdent == Id.__equals ||
+                                         callExpIdent == Id.eq;
+            }
+            if (tok == TOK.equal || tok == TOK.notEqual ||
+                tok == TOK.lessThan || tok == TOK.greaterThan ||
+                tok == TOK.lessOrEqual || tok == TOK.greaterOrEqual ||
+                tok == TOK.identity || tok == TOK.notIdentity ||
+                isEqualsCallExpression)
+            {
+                auto es = new Expressions();
+                auto tiargs = new Objects();
+                Loc loc = exp.e1.loc;
+
+                if (isEqualsCallExpression)
+                {
+                    auto callExp = cast(CallExp) exp.e1;
+                    auto args = callExp.arguments;
+
+                    // template args
+                    static immutable compMsg = "==";
+                    Expression comp = new StringExp(loc, cast(char*) compMsg.ptr);
+                    comp = comp.expressionSemantic(sc);
+                    tiargs.push(comp);
+                    tiargs.push((*args)[0].type);
+                    tiargs.push((*args)[1].type);
+
+                    // runtime args
+                    es.push((*args)[0]);
+                    es.push((*args)[1]);
+                }
+                else
+                {
+                    auto binExp = cast(EqualExp) exp.e1;
+
+                    // template args
+                    Expression comp = new StringExp(loc, cast(char*) Token.toChars(exp.e1.op));
+                    comp = comp.expressionSemantic(sc);
+                    tiargs.push(comp);
+                    tiargs.push(binExp.e1.type);
+                    tiargs.push(binExp.e2.type);
+
+                    // runtime args
+                    es.push(binExp.e1);
+                    es.push(binExp.e2);
+                }
+
+                Expression __assertFail = new IdentifierExp(exp.loc, Id.empty);
+                auto assertFail = new DotIdExp(loc, __assertFail, Id.object);
+
+                auto dt = new DotTemplateInstanceExp(loc, assertFail, Id._d_assert_fail, tiargs);
+                auto ec = CallExp.create(Loc.initial, dt, es);
+                exp.msg = ec;
+            }
+            else
+            {
+                OutBuffer buf;
+                buf.printf("%s failed", assertExpMsg);
+                exp.msg = new StringExp(Loc.initial, buf.extractString());
+            }
+        }
         if (exp.msg)
         {
-            exp.msg = exp.msg.expressionSemantic(sc);
+            exp.msg = expressionSemantic(exp.msg, sc);
             exp.msg = resolveProperties(sc, exp.msg);
             exp.msg = exp.msg.implicitCastTo(sc, Type.tchar.constOf().arrayOf());
             exp.msg = exp.msg.optimize(WANTvalue);
@@ -7874,6 +7983,8 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                         dvx.e1 = e1x;
                         auto cx = cast(CallExp)ce.copy();
                         cx.e1 = dvx;
+                        if (global.params.vsafe && checkConstructorEscape(sc, cx, false))
+                            return setError();
 
                         Expression e0;
                         Expression.extractLast(e2x, e0);

@@ -42,7 +42,8 @@ enum
 {
     CHECKACTION_D,        // call D assert on failure
     CHECKACTION_C,        // call C assert on failure
-    CHECKACTION_halt      // cause program halt on failure
+    CHECKACTION_halt,     // cause program halt on failure
+    CHECKACTION_context   // call D assert with the error context on failure
 };
 
 enum CPU
@@ -67,7 +68,9 @@ enum CPU
 enum CppStdRevision
 {
     CppStdRevisionCpp98 = 199711,
-    CppStdRevisionCpp11 = 201103
+    CppStdRevisionCpp11 = 201103,
+    CppStdRevisionCpp14 = 201402,
+    CppStdRevisionCpp17 = 201703
 };
 
 // Put command line switches in here
@@ -110,6 +113,7 @@ struct Param
     bool useUnitTests;  // generate unittest code
     bool useInline;     // inline expand functions
     bool useDIP25;      // implement http://wiki.dlang.org/DIP25
+    bool noDIP25;       // revert to pre-DIP25 behavior
     bool release;       // build release version
     bool preservePaths; // true means don't strip path from source file
     Diagnostic warnings;

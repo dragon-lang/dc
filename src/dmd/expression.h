@@ -55,7 +55,8 @@ Expression *toDelegate(Expression *e, Type* t, Scope *sc);
 bool hasSideEffect(Expression *e);
 bool canThrow(Expression *e, FuncDeclaration *func, bool mustNotThrow);
 
-enum OwnedBy
+typedef unsigned char OwnedBy;
+enum
 {
     OWNEDcode,      // normal code expression in AST
     OWNEDctfe,      // value expression for CTFE
@@ -65,11 +66,11 @@ enum OwnedBy
 class Expression : public RootObject
 {
 public:
-    Loc loc;                    // file location
-    Type *type;                 // !=NULL means that semantic() has been run
     TOK op;                     // to minimize use of dynamic_cast
     unsigned char size;         // # of bytes in Expression so we can copy() it
     unsigned char parens;       // if this is a parenthesized expression
+    Type *type;                 // !=NULL means that semantic() has been run
+    Loc loc;                    // file location
 
     static void _init();
     Expression *copy();
@@ -430,25 +431,27 @@ public:
     Expressions *elements;      // parallels sd->fields[] with NULL entries for fields to skip
     Type *stype;                // final type of result (can be different from sd's type)
 
-    bool useStaticInit;         // if this is true, use the StructDeclaration's init symbol
     Symbol *sym;                // back end symbol to initialize with literal
 
-    OwnedBy ownedByCtfe;
-
-    // pointer to the origin instance of the expression.
-    // once a new expression is created, origin is set to 'this'.
-    // anytime when an expression copy is created, 'origin' pointer is set to
-    // 'origin' pointer value of the original expression.
+    /** pointer to the origin instance of the expression.
+     * once a new expression is created, origin is set to 'this'.
+     * anytime when an expression copy is created, 'origin' pointer is set to
+     * 'origin' pointer value of the original expression.
+     */
     StructLiteralExp *origin;
 
     // those fields need to prevent a infinite recursion when one field of struct initialized with 'this' pointer.
     StructLiteralExp *inlinecopy;
 
-    // anytime when recursive function is calling, 'stageflags' marks with bit flag of
-    // current stage and unmarks before return from this function.
-    // 'inlinecopy' uses similar 'stageflags' and from multiple evaluation 'doInline'
-    // (with infinite recursion) of this expression.
+    /** anytime when recursive function is calling, 'stageflags' marks with bit flag of
+     * current stage and unmarks before return from this function.
+     * 'inlinecopy' uses similar 'stageflags' and from multiple evaluation 'doInline'
+     * (with infinite recursion) of this expression.
+     */
     int stageflags;
+
+    bool useStaticInit;         // if this is true, use the StructDeclaration's init symbol
+    OwnedBy ownedByCtfe;
 
     static StructLiteralExp *create(Loc loc, StructDeclaration *sd, void *elements, Type *stype = NULL);
     bool equals(RootObject *o);
@@ -647,10 +650,10 @@ public:
      */
     Type *targ;
     Identifier *id;     // can be NULL
-    TOK tok;       // ':' or '=='
     Type *tspec;        // can be NULL
-    TOK tok2;      // 'struct', 'union', etc.
     TemplateParameters *parameters;
+    TOK tok;       // ':' or '=='
+    TOK tok2;      // 'struct', 'union', etc.
 
     Expression *syntaxCopy();
     void accept(Visitor *v) { v->visit(this); }
