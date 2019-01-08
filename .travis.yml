@@ -1,25 +1,27 @@
-language: d
+language: generic
 git:
   depth: false
   submodules: false
-before_script:
-# gdb is used by some dmd tests
-- sudo apt-get install gdb
 script:
-# install rund
-- git clone --depth=1 --branch=master https://github.com/marler8997/rund.git ../rund
-- dmd -i -I../rund/src -run ../rund/make.d build
-- sudo cp ../rund/bin/rund /bin/rund
-# build dmd
-- ./src/build.d
+# download build library
+- git clone --depth=1 --branch=master https://github.com/dragon-lang/buildlib.git ../buildlib
+# Make sure our iso command works
+- ../buildlib/iso dmd-build
+- ../buildlib/iso ldc-build
+# build dmd using ldc (NOT WORKING RIGHT NOW)
+# TODO: override generate directory
+#- ../buildlib/iso ldc-build ./src/build.d HOST_DMD=ldmd2
+# build dmd using dmd
+#- rm -rf generated/linux
+- ../buildlib/iso dmd-build ./src/build.d
 # build druntime and phobos.
 - git clone --depth=1 --branch=master https://github.com/dlang/druntime.git ../druntime
 - git clone --depth=1 --branch=master https://github.com/dlang/phobos.git ../phobos
-- make -j$(nproc) -C ../druntime -f posix.mak DMD=../dc/generated/linux/release/64/dmd DMD_DIR=../dc
-- make -j$(nproc) -C ../phobos -f posix.mak DMD=../dc/generated/linux/release/64/dmd DMD_DIR=../dc
+- ../buildlib/iso dmd-build make -j$(nproc) -C ../druntime -f posix.mak DMD=../dc/generated/linux/release/64/dmd DMD_DIR=../dc CC=$(which gcc)
+- ../buildlib/iso dmd-build make -j$(nproc) -C ../phobos -f posix.mak DMD=../dc/generated/linux/release/64/dmd DMD_DIR=../dc CC=$(which gcc)
 # run unittest and testsuite.
 #make -j$(nproc) -C ../druntime -f posix.mak DMD=../dc/generated/linux/release/64/dmd unittest
 #make -j$(nproc) -C ../phobos -f posix.mak DMD=../dc/generated/linux/release/64/dmd unittest
 #make -j$(nproc) -C test DMD=../dc/generated/linux/release/64/dmd MODEL=64
 # run the dmd test suite
-- dmd -run test/run.d
+- ../buildlib/iso dmd-test ./test/run.d
